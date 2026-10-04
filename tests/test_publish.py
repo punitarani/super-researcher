@@ -235,6 +235,16 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(llm.section_calls, 1)
             self.assertTrue(publish.publish_paper_path(corpus).exists())
 
+    def test_compile_progress_ends_without_a_current_section(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = make_publish_corpus(tmp)
+            counts: dict[str, object] = {}  # merged like PublishJob.event does
+
+            publish.compile_publish_paper(str(corpus), llm=FakeLLM(), progress=lambda stage, progress, **c: counts.update(c))
+
+            self.assertEqual(counts["completed_sections"], counts["section_count"])
+            self.assertIsNone(counts["current_section"])
+
     def test_visual_candidates_exclude_remote_missing_and_dedupe_local_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             corpus = make_visual_corpus(tmp)

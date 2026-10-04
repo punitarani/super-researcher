@@ -368,7 +368,7 @@ def compile_publish_paper(
     atomic_write_json(publish_source_index_path(corpus_path), source_index)
     write_final_paper(corpus_path, plan, state, source_index)
     if progress:
-        progress("Paper compiled", 96, completed_sections=len(state.get("completed_sections", [])), section_count=total)
+        progress("Paper compiled", 96, completed_sections=len(state.get("completed_sections", [])), section_count=total, current_section=None)
     return get_publish_payload(str(corpus_path))
 
 
