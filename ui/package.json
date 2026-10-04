@@ -6,7 +6,7 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "concurrently --kill-others --names api,web --prefix-colors blue,green \"python3 ../run_app.py --host 127.0.0.1 --port 8765\" \"next dev -H 127.0.0.1 -p 3000\"",
+    "dev": "concurrently --kill-others --names api,web --prefix-colors blue,green \"node scripts/backend.mjs --host 127.0.0.1 --port 8765\" \"next dev -H 127.0.0.1 -p 3000\"",
     "dev:web": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",

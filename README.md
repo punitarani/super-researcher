@@ -73,7 +73,7 @@ npm run ui
 # → http://127.0.0.1:3000   (the backend and classic UI stay on :8765)
 ```
 
-That one command installs the UI's dependencies on first run, then starts the Python backend and the UI together, both bound to 127.0.0.1. Ctrl-C stops both. You don't need any API keys: Codex signs in from the Agents page. If the backend is already running (`python3 run_app.py`), start just the UI with `npm --prefix ui run dev:web`.
+That one command installs the UI's dependencies on first run, then starts the Python backend and the UI together, both bound to 127.0.0.1. Ctrl-C stops both. The backend runs with the repo's `.venv` if there is one (so the optional extras above are available without activating it), otherwise with `python3`. You don't need any API keys: Codex signs in from the Agents page. If the backend is already running (`python3 run_app.py`), start just the UI with `npm --prefix ui run dev:web`.
 
 - **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, find its files, and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
 - **New run** (`/new`): topic, depth, breadth, and scope controls. It warns you first if the agent isn't ready or no search key is set.
