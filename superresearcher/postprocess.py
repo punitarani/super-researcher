@@ -25,6 +25,9 @@ RAW_PDF_TOKEN_PATTERN = re.compile(r"\b(?:\d+\s+\d+\s+obj|endobj|stream|endstrea
 MARKDOWN_POSTPROCESS_JOBS: dict[str, "MarkdownPostprocessJob"] = {}
 
 
+EXTRACTED_PDF_HEADING = "## Extracted PDF Text"  # what ingest writes above plain PDF text
+
+
 def markdown_readability_dependency_status() -> dict[str, Any]:
     modules = {}
     for module in ("pymupdf4llm", "fitz"):
@@ -168,7 +171,8 @@ def postprocess_markdown_row(corpus: Path, row: dict[str, Any]) -> dict[str, Any
     text = md_path.read_text(encoding="utf-8", errors="replace")
     header, body = split_markdown_sidecar(text)
     metrics = readability_metrics(body)
-    if not metrics["damaged"]:
+    flat = lacks_headings(body)
+    if not metrics["damaged"] and not flat:
         result["unchanged"] = 1
         return result
     result["flagged"] = 1
@@ -181,11 +185,15 @@ def postprocess_markdown_row(corpus: Path, row: dict[str, Any]) -> dict[str, Any
             candidate = normalize_pdf_asset_links(converter(local_path, asset_dir), asset_dir).strip()
         except Exception:
             continue
-        if candidate_is_better(body, candidate):
+        if candidate_is_better(body, candidate) or (flat and adds_headings(body, candidate)):
             atomic_write_text(md_path, header + candidate + "\n")
             result["row"]["conversion_notes"] = append_note(row, f"postprocess_{method}_reconverted")
             result["reconverted"] = 1
             return result
+    if not metrics["damaged"]:
+        # Readable, just without headings, and no converter could add them (e.g. pymupdf4llm isn't installed).
+        result["unchanged"] = 1
+        return result
     cleaned = cleanup_newline_damage(body)
     if candidate_is_better(body, cleaned):
         atomic_write_text(md_path, header + cleaned.strip() + "\n")
@@ -195,6 +203,19 @@ def postprocess_markdown_row(corpus: Path, row: dict[str, Any]) -> dict[str, Any
     result["failed"] = 1
     result["row"]["conversion_notes"] = append_note(row, "postprocess_newline_repair_failed")
     return result
+
+
+def lacks_headings(body: str) -> bool:
+    """True for PDF text saved without the document's own headings, which topic discovery needs."""
+    return not any(line.startswith("#") and line.strip() != EXTRACTED_PDF_HEADING for line in body.splitlines())
+
+
+def adds_headings(old_body: str, candidate_body: str) -> bool:
+    """A clean conversion that brings back headings without losing much of the text."""
+    if lacks_headings(candidate_body):
+        return False
+    old, new = readability_metrics(old_body), readability_metrics(candidate_body)
+    return not new["damaged"] and new["alnum_count"] >= old["alnum_count"] * 0.45
 
 
 def is_pdf_source(row: dict[str, Any], local_path: Path) -> bool:
