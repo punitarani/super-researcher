@@ -23,6 +23,13 @@ def _web_dir() -> Path:
 WEB = _web_dir()
 
 
+def web_file(root: Path, relative: str) -> Path | None:
+    # Resolve first so "..", symlinks and absolute paths can't reach outside root.
+    base = root.resolve()
+    path = (base / relative).resolve()
+    return path if base in path.parents else None
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"SuperResearcher/{__version__}"
 
@@ -36,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if path.startswith("/static/"):
-            return self.serve_file(WEB / path.removeprefix("/static/"))
+            return self.serve_file(web_file(WEB, path.removeprefix("/static/")))
         if path == "/api/config":
             keys = load_api_keys()
             return self.send_json(
@@ -301,8 +308,8 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length).decode("utf-8")
         return json.loads(raw or "{}")
 
-    def serve_file(self, path: Path) -> None:
-        if not path.exists() or not path.is_file():
+    def serve_file(self, path: Path | None) -> None:
+        if path is None or not path.is_file():
             self.send_error(404)
             return
         content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
