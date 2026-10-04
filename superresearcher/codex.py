@@ -15,7 +15,6 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 from .config import codex_bin
@@ -71,6 +70,7 @@ _status_epoch = 0  # bumped on invalidation so an in-flight check can't cache a 
 # When OpenAI last rejected the stored ChatGPT sign-in. `codex login status` only reads the
 # stored tokens, so it keeps saying "Logged in" after they expire or are revoked.
 _auth_rejected_at: float | None = None
+_features_cache: dict[tuple[str, float], frozenset[str]] = {}  # per binary path + mtime
 _login_process: subprocess.Popen[str] | None = None
 _login_lock = threading.Lock()
 
@@ -81,7 +81,7 @@ def status(refresh: bool = False) -> CodexStatus:
     if not refresh and cached and time.monotonic() - cached[0] < STATUS_TTL_SECONDS:
         return cached[1]
     epoch = _status_epoch
-    current = _check_status()
+    current = _check_status(recheck=refresh)
     if epoch == _status_epoch:
         _status_cache = (time.monotonic(), current)
     return current
@@ -134,7 +134,10 @@ def complete(prompt: str, model: str | None = None) -> str:
         except OSError as exc:
             raise CodexError(f"Couldn't run Codex at {binary}: {exc}") from exc
         if result.returncode == 0 and reply.exists():
-            return reply.read_text(encoding="utf-8")
+            text = reply.read_text(encoding="utf-8")
+            if text.strip():
+                return text
+            raise CodexError("Codex finished without writing an answer. Try again.")
         raise _classify_failure(result)
 
 
@@ -196,7 +199,7 @@ def _watch_login(process: subprocess.Popen[str], first_url: queue.Queue[str]) ->
     first_url.put(_first_meaningful_line("".join(output)))  # only read if no URL came first
 
 
-def _check_status() -> CodexStatus:
+def _check_status(recheck: bool = False) -> CodexStatus:
     binary = codex_bin()
     if binary is None:
         return CodexStatus("not_installed", INSTALL_HELP)
@@ -214,7 +217,7 @@ def _check_status() -> CodexStatus:
         return CodexStatus("error", f"Couldn't run Codex at {binary}: {exc}")
     output = login.stdout + login.stderr  # Codex prints the status to stderr
     if "Logged in using ChatGPT" in output:
-        if _sign_in_rejected():
+        if _sign_in_rejected(recheck):
             return CodexStatus("expired", EXPIRED_HELP)
         return CodexStatus("ready", "Signed in with ChatGPT. Prompts run on your ChatGPT plan.")
     if "Not logged in" in output:
@@ -224,7 +227,7 @@ def _check_status() -> CodexStatus:
     return CodexStatus("error", f"Couldn't check Codex sign-in: {_first_meaningful_line(output)}")
 
 
-def _sign_in_rejected() -> bool:
+def _sign_in_rejected(recheck: bool = False) -> bool:
     """True while the stored sign-in is one OpenAI already rejected (cleared by signing in again)."""
     global _auth_rejected_at
     rejected_at = _auth_rejected_at
@@ -235,7 +238,11 @@ def _sign_in_rejected() -> bool:
             _auth_rejected_at = None  # signed in again, e.g. `codex login` in a terminal
             return False
     except OSError:
-        pass
+        # No auth.json (Codex keeps the sign-in in the keyring), so nothing shows a new sign-in:
+        # an explicit Re-check clears the rejection, and the next prompt tests the sign-in again.
+        if recheck:
+            _auth_rejected_at = None
+            return False
     return True
 
 
@@ -291,16 +298,28 @@ def _credential_store_override() -> list[str]:
     return ["-c", f'cli_auth_credentials_store="{match.group(1)}"'] if match else []
 
 
-@lru_cache(maxsize=8)
 def _features(binary: str, mtime: float) -> frozenset[str]:
-    """Feature names this Codex build knows (cached per binary version via its mtime)."""
+    """Feature names this Codex build knows (cached per binary version via its mtime).
+
+    Fails closed: without the list the app can't turn Codex's tools off, so it doesn't run Codex,
+    and the failure isn't cached so the next prompt checks again.
+    """
+    cached = _features_cache.get((binary, mtime))
+    if cached is not None:
+        return cached
     try:
         listing = _run([binary, "features", "list"], timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return frozenset()
-    if listing.returncode != 0:
-        return frozenset()
-    return frozenset(line.split()[0] for line in listing.stdout.splitlines() if line.strip())
+        detail = "" if listing.returncode == 0 else _first_meaningful_line(listing.stdout + listing.stderr) or f"exit code {listing.returncode}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        detail = str(exc)
+    if detail:
+        raise CodexError(
+            f"Couldn't check which Codex tools to turn off (`codex features list` failed: {detail}), "
+            "so the app won't run Codex. Fix that error (it often comes from ~/.codex/config.toml), then try again."
+        )
+    found = frozenset(line.split()[0] for line in listing.stdout.splitlines() if line.strip())
+    _features_cache[(binary, mtime)] = found
+    return found
 
 
 def _run(cmd: list[str], stdin: str = "", timeout: float = 20, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
