@@ -40,7 +40,7 @@ export function JobCard(props: Props) {
 }
 
 function JobCardBody({ stage, step, corpusId, notes, agentProblem, classicUrl, lostJob, started, onStarted }: Props & { started: Job | null; onStarted: (job: Job) => void }) {
-  const url = started && isActive(started.state) ? `/api/stream/${stage.kind}/${encodeURIComponent(started.job_id)}` : null
+  const url = started && `/api/stream/${stage.kind}/${encodeURIComponent(started.job_id)}`
   const { data: job, error: streamError } = useLiveSnapshot(url, maybeJob, started)
   const [, setWatched] = useQueryState("jobs", runsParams.jobs)
   const [force, setForce] = useState(false)

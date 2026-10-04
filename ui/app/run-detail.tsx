@@ -26,8 +26,7 @@ const METRICS = [
 ] as const
 
 export function RunDetail({ initial, pipeline }: { initial: Run; pipeline: ReactNode }) {
-  const active = isActive(initial.state)
-  const { data: run, error } = useLiveSnapshot(active ? `/api/stream/run/${encodeURIComponent(initial.run_id)}` : null, runSchema, initial)
+  const { data: run, error } = useLiveSnapshot(`/api/stream/run/${encodeURIComponent(initial.run_id)}`, runSchema, initial)
   const [{ q, state }] = useQueryStates(runsParams)
   // Switching tabs re-renders on the server so the Pipeline tab loads only when opened.
   const [tab, setTab] = useQueryState("tab", runsParams.tab.withOptions({ shallow: false }))
