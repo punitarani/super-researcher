@@ -119,8 +119,8 @@ class ResearchRun:
             self.event(message)
 
     def _run(self) -> None:
-        keys = load_api_keys()
         try:
+            keys = load_api_keys()
             self.status["state"] = "running"
             self.status["started_at"] = datetime.now().isoformat(timespec="seconds")
             self.event("Run started. Creating dossier and validating storage.", "Run started", 3)
@@ -130,9 +130,21 @@ class ResearchRun:
                 {**self.payload, "agent": llm.agent, "configured_api_keys": redact_keys(keys)},
             )
             agent = agent_status(llm.agent, keys)
-            if not agent["ready"]:
+            reported = set()
+            if agent["state"] == "error":
+                # The status check itself failed (a timeout, a slow keyring), so try the agent anyway.
+                self.event(f"Couldn't check {agent['label']}, so the run will try it anyway. {agent['message']}")
+            elif not agent["ready"]:
                 llm.unavailable = agent["message"]
+                reported.add(agent["message"])
                 self.event(f"{agent['label']} isn't ready, so planning uses built-in defaults. {agent['message']}")
+
+            def note_fallback(reason: str) -> None:
+                if reason not in reported:
+                    reported.add(reason)
+                    self.event(f"{agent['label']} didn't give a usable answer, so this step used built-in defaults: {reason}")
+
+            llm.on_fallback = note_fallback
 
             self._step("Dossier created. Building the research protocol.", "Dossier created", 8)
             protocol = build_protocol(self.payload, llm)

@@ -31,6 +31,9 @@ login = os.environ.get("FAKE_CODEX_LOGIN", "chatgpt")
 if args == ["--version"]:
     print("codex-cli " + os.environ.get("FAKE_CODEX_VERSION", "0.160.0"))
 elif args == ["features", "list"]:
+    if os.environ.get("FAKE_CODEX_FEATURES") == "broken":
+        print("Error loading config.toml: unknown variant", file=sys.stderr)
+        sys.exit(1)
     print("apps                stable      true\\nshell_tool          stable      true\\nweb_search_cached   deprecated  false")
 elif args == ["login", "status"]:
     lines = {{"chatgpt": "Logged in using ChatGPT", "api_key": "Logged in using an API key - sk-proj-***abcde"}}
@@ -38,6 +41,9 @@ elif args == ["login", "status"]:
     sys.exit(0 if login in lines else 1)
 elif args[:1] == ["exec"]:
     outcome = os.environ.get("FAKE_CODEX_EXEC", "ok")
+    if outcome == "empty":
+        open(args[args.index("--output-last-message") + 1], "w", encoding="utf-8").close()
+        sys.exit(0)
     if outcome == "ok":
         with open(args[args.index("--output-last-message") + 1], "w", encoding="utf-8") as reply:
             reply.write('```json\\n{{"answer": 42}}\\n```')
@@ -183,6 +189,34 @@ class CodexExecTests(FakeCodexTestCase):
         failure = subprocess.CompletedProcess([], 1, json.dumps({"type": "turn.failed", "error": {"message": "server error, request id 94013"}}), "")
         self.assertFalse(codex._classify_failure(failure).fatal)
         self.assertIsNone(codex._auth_rejected_at)
+
+    def test_codex_never_runs_with_tools_when_its_features_cant_be_listed(self) -> None:
+        self.set_fake(features="broken")
+        with self.assertRaises(CodexError) as raised:
+            codex.complete("hi")
+        self.assertFalse(raised.exception.fatal)  # retried on the next prompt
+        self.assertEqual(self.calls("exec"), [])
+
+        self.set_fake(features="ok")  # the failure isn't cached
+        codex.complete("hi")
+        args = self.calls("exec")[-1]["args"]
+        self.assertEqual([args[i + 1] for i, arg in enumerate(args) if arg == "--disable"], ["shell_tool", "apps"])
+
+    def test_an_empty_reply_is_an_error(self) -> None:
+        self.set_fake(exec="empty")
+        with self.assertRaises(CodexError) as raised:
+            codex.complete("hi")
+        self.assertFalse(raised.exception.fatal)
+
+    def test_recheck_clears_a_rejection_when_the_sign_in_lives_in_the_keyring(self) -> None:
+        self.set_fake(exec="expired")
+        with self.assertRaises(CodexError):
+            codex.complete("hi")
+        self.assertFalse((self.codex_home / "auth.json").exists())  # keyring storage: nothing to compare against
+        self.assertEqual(codex.status().state, "expired")
+
+        # The user signed in again in a terminal and clicked Re-check; the next prompt re-tests the sign-in.
+        self.assertEqual(codex.status(refresh=True).state, "ready")
 
     def test_complete_refuses_to_run_without_a_chatgpt_sign_in(self) -> None:
         self.set_fake(login="api_key")

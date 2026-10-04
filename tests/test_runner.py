@@ -25,7 +25,7 @@ class StopRunTests(unittest.TestCase):
             patch.object(runner, "ensure_storage_root", side_effect=lambda path: Path(path)),
             patch.object(runner, "load_api_keys", return_value={}),
             patch.object(runner, "LLMClient", return_value=MagicMock(agent="codex", unavailable=None)),
-            patch.object(runner, "agent_status", return_value={"ready": True, "label": "Codex", "message": ""}),
+            patch.object(runner, "agent_status", return_value={"state": "ready", "ready": True, "label": "Codex", "message": ""}),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
