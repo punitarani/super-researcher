@@ -44,6 +44,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/static/"):
             return self.serve_file(web_file(WEB, path.removeprefix("/static/")))
+        if path.startswith("/assets/"):
+            # embedding-atlas loads its workers from /assets/<file> at the page origin.
+            return self.serve_file(web_file(WEB / "atlas" / "assets", path.removeprefix("/assets/")))
         if path == "/api/config":
             keys = load_api_keys()
             return self.send_json(

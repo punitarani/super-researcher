@@ -33,6 +33,17 @@ class StaticFileTests(unittest.TestCase):
                     self.assertEqual(status, 404)
                     self.assertNotIn(b"import", body)
 
+    def test_atlas_workers_are_served_from_the_root_assets_path(self) -> None:
+        # embedding-atlas hard-codes its worker URL as /assets/<file>, relative to the page origin.
+        with topic_server() as base:
+            status, content_type, body = fetch(base, "/assets/clustering.worker-D1Mz2-wD.js")
+            self.assertEqual(status, 200)
+            self.assertIn("javascript", content_type)
+            self.assertTrue(body)
+
+            status, _, _ = fetch(base, "/assets/../atlas.js")
+            self.assertEqual(status, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
