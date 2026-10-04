@@ -17,7 +17,8 @@ export default async function RunsPage({ searchParams }: PageProps<"/">) {
       <aside aria-label="Runs" className={runId ? "hidden md:block" : undefined}>
         <RunList runs={runs.data} />
       </aside>
-      <section aria-label="Run details" className={runId ? undefined : "hidden md:block"}>
+      {/* min-w-0: long file paths in the run view must not widen the grid column. */}
+      <section aria-label="Run details" className={runId ? "min-w-0" : "hidden min-w-0 md:block"}>
         {!run ? (
           <div className="grid h-64 place-items-center rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             {runs.data.length ? "Select a run to see its progress and files." : "Your runs will show up here."}
