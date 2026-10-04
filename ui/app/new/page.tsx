@@ -40,7 +40,7 @@ export default async function NewRunPage() {
           <AlertDescription>
             <p>
               Add <code className="font-mono">EXA_API_KEY</code>, <code className="font-mono">SERPER_API_KEY</code> or{" "}
-              <code className="font-mono">SERP_API_KEY</code> to <code className="font-mono">api_keys.txt</code>. The run still plans and writes its reports.
+              <code className="font-mono">SERP_API_KEY</code> to <code className="font-mono">.env</code>. The run still plans and writes its reports.
             </p>
           </AlertDescription>
         </Alert>

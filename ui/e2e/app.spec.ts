@@ -81,7 +81,7 @@ test("pipeline jobs stream progress and show the backend's curation message", as
 test("agents page explains how to set each agent up", async ({ page }) => {
   await page.goto("/agents")
   await expect(page.getByRole("heading", { name: "Gemini" })).toBeVisible()
-  await expect(page.getByText("Add GEMINI_API_KEY to api_keys.txt")).toBeVisible()
+  await expect(page.getByText("Add GEMINI_API_KEY to .env")).toBeVisible()
   await expect(page.getByText("No search key yet")).toBeVisible()
   await expect(page.getByRole("link", { name: /Agent: Gemini, No API key/ })).toBeVisible()
 })

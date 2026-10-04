@@ -29,7 +29,7 @@ export default async function AgentsPage() {
           <CardDescription>
             {hasSearch
               ? "Discovery searches with every provider that has a key."
-              : "No search key yet, so discovery won't find new sources. Add one of these to api_keys.txt (see api_keys.example.txt). It's read on every run, so there's no restart."}
+              : "No search key yet, so discovery won't find new sources. Add one of these to .env (see .env.example). It's read on every run, so there's no restart."}
           </CardDescription>
         </CardHeader>
         <CardContent>

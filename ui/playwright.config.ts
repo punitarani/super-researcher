@@ -25,7 +25,7 @@ export default defineConfig({
     {
       command: "node scripts/backend.mjs --host 127.0.0.1 --port 8799",
       url: `${API_URL}/api/config`,
-      env: { SUPERRESEARCHER_STORAGE_ROOT: storage, SUPERRESEARCHER_API_KEYS: path.join(storage, "no-keys.txt"), SUPERRESEARCHER_AGENT: "gemini" },
+      env: { SUPERRESEARCHER_STORAGE_ROOT: storage, SUPERRESEARCHER_API_KEYS: path.join(storage, "no-keys.env"), SUPERRESEARCHER_AGENT: "gemini" },
     },
     {
       command: "npx next dev -H 127.0.0.1 -p 3099",
