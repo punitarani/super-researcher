@@ -4,12 +4,13 @@ import { StatusDot } from "@/components/status"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, attempt } from "@/lib/backend"
 import { SEARCH_PROVIDERS } from "@/lib/labels"
+import { AgentLogSetting } from "./agent-log-setting"
 import { AgentPicker } from "./agent-picker"
 
 export const metadata: Metadata = { title: "Agents · SuperResearcher" }
 
 export default async function AgentsPage() {
-  const [agents, config] = await Promise.all([attempt(api.agents()), attempt(api.config())])
+  const [agents, config, settings] = await Promise.all([attempt(api.agents()), attempt(api.config()), attempt(api.settings())])
   const keys = new Set(config.data?.configuredKeys)
   const hasSearch = SEARCH_PROVIDERS.some(({ key }) => keys.has(key))
   return (
@@ -44,6 +45,18 @@ export default async function AgentsPage() {
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card id="agent-log">
+        <CardHeader>
+          <CardTitle>
+            <h2>Agent log</h2>
+          </CardTitle>
+          <CardDescription>Each run&apos;s Agent log tab shows what the agent was asked, what it answered, and which steps used built-in defaults.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {settings.data ? <AgentLogSetting settings={settings.data} /> : <p className="text-sm text-destructive">{settings.error}</p>}
         </CardContent>
       </Card>
     </div>

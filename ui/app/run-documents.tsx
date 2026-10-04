@@ -4,7 +4,7 @@ import { Markdown } from "@/components/markdown"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
 import { api, describeError } from "@/lib/backend"
-import { FIRST_CHUNK, MAX_BYTES, readRunFile, RunFileError, runFileExists, runFolder } from "@/lib/run-files"
+import { FIRST_CHUNK, MAX_BYTES, readRunFile, RunFileError, runFileExists, runFolder, type RunFile } from "@/lib/run-files"
 import { briefSchema, type Run } from "@/lib/schemas"
 import { CloseDocButton, ShowMoreButton } from "./doc-controls"
 
@@ -16,7 +16,7 @@ const REPORT_FILES = [
 ] as const
 
 /** Like attempt() in lib/backend, but file problems keep their own (user-facing) message. */
-async function settle<T>(promise: Promise<T>): Promise<{ data: T; error: null } | { data: null; error: string }> {
+export async function settle<T>(promise: Promise<T>): Promise<{ data: T; error: null } | { data: null; error: string }> {
   try {
     return { data: await promise, error: null }
   } catch (error) {
@@ -24,7 +24,7 @@ async function settle<T>(promise: Promise<T>): Promise<{ data: T; error: null } 
   }
 }
 
-async function locate(run: Run) {
+export async function locate(run: Run) {
   const config = await api.config()
   return runFolder(config.default_storage_root, run.dossier_path, run.run_id)
 }
@@ -100,9 +100,9 @@ export async function RunBrief({ run }: { run: Run }) {
 export async function DocumentView({ run, doc, more }: { run: Run; doc: string; more: number }) {
   const folder = await settle(locate(run))
   if (folder.data === null) return <DocProblem doc={doc} error={folder.error} />
-  const file = await settle(readRunFile(folder.data, doc, FIRST_CHUNK * 2 ** Math.min(Math.max(more, 0), 8)))
+  const file = await readStep(folder.data, doc, more)
   if (file.data === null) return <DocProblem doc={doc} error={file.error} />
-  const { relativePath, text, size, truncated, limit } = file.data
+  const { relativePath, size } = file.data
   return (
     <Card>
       <CardContent className="space-y-3">
@@ -114,19 +114,34 @@ export async function DocumentView({ run, doc, more }: { run: Run; doc: string; 
           <CopyButton value={`${run.dossier_path}/${relativePath}`} label="Copy path" />
           <CloseDocButton />
         </div>
-        <div className="max-h-[70vh] overflow-auto rounded-md border p-3">
-          <Rendered relativePath={relativePath} text={text} truncated={truncated} />
-        </div>
-        {truncated && (
-          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <span>
-              Showing the first {formatBytes(limit)} of {formatBytes(size)}.
-            </span>
-            {limit < MAX_BYTES ? <ShowMoreButton /> : <span>Open the file from disk to see the rest.</span>}
-          </div>
-        )}
+        <FileBody file={file.data} />
       </CardContent>
     </Card>
+  )
+}
+
+/** Read a run file up to its current "Show more" step. */
+export function readStep(folder: string, relativePath: string, more: number) {
+  return settle(readRunFile(folder, relativePath, FIRST_CHUNK * 2 ** Math.min(Math.max(more, 0), 8)))
+}
+
+/** A file's contents, rendered by type, with "Show more" when it was cut off. */
+export function FileBody({ file, plainText = false }: { file: RunFile; plainText?: boolean }) {
+  const { relativePath, text, size, truncated, limit } = file
+  return (
+    <>
+      <div className="max-h-[70vh] overflow-auto rounded-md border p-3">
+        {plainText ? <pre className="font-mono text-xs whitespace-pre-wrap">{text}</pre> : <Rendered relativePath={relativePath} text={text} truncated={truncated} />}
+      </div>
+      {truncated && (
+        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+          <span>
+            Showing the first {formatBytes(limit)} of {formatBytes(size)}.
+          </span>
+          {limit < MAX_BYTES ? <ShowMoreButton /> : <span>Open the file from disk to see the rest.</span>}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -166,7 +181,7 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
-function formatBytes(bytes: number) {
+export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`

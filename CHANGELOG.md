@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Agent log: each run records every agent prompt and reply in `<run folder>/logs/` (credentials removed before saving), shown as a timeline in the web UI that marks which steps used built-in defaults and why. On by default; turn it off on the Agents page or with `"agent_log": false` in `app-settings.json`. The web UI also gains a Sources tab.
 - API keys now live in `.env`, from the `.env.example` template, instead of `api_keys.txt`. A leftover `api_keys.txt` is still read, and `.env` wins where both set a key. The file accepts `export`, quoted values and trailing `# comments`.
 - Agent picker: choose **Codex (ChatGPT plan)** or **Gemini (API key)** from the top bar. The choice is saved, and the selected agent never silently falls back to another provider.
 - Codex runs on the user's ChatGPT subscription through their own Codex CLI. The app checks that Codex is installed (0.122+) and signed in with ChatGPT, explains how to fix it, and can start `codex login` for you. It never reads or stores credentials, strips `CODEX_API_KEY`/`OPENAI_API_KEY` from Codex's environment, and runs each prompt in an isolated, read-only session without tools or web search.

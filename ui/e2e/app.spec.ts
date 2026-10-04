@@ -1,4 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test"
+import { mkdirSync, writeFileSync } from "node:fs"
+import path from "node:path"
 import { API_URL } from "../playwright.config"
 
 async function createRun(request: APIRequestContext, topic: string, size: "low" | "high" = "low") {
@@ -102,10 +104,62 @@ test("pipeline jobs stream progress and show the backend's curation message", as
   await expect(stage("Compose terms").getByRole("link", { name: "Open the classic UI" })).toHaveAttribute("href", /127\.0\.0\.1:8799/)
 })
 
+async function finishedRun(request: APIRequestContext, topic: string) {
+  const runId = await createRun(request, topic)
+  await expect.poll(async () => (await (await request.get(`${API_URL}/api/runs/${runId}`)).json()).state).toBe("completed")
+  return runId
+}
+
+test("sources can be searched and filtered, the filters survive a reload, and a source's text opens", async ({ page, request }) => {
+  const runId = await finishedRun(request, "Tidal turbines")
+  // The keyless e2e backend finds no sources, so give the run two, as ingest would write them.
+  const folder = path.join(process.env.E2E_STORAGE!, runId)
+  mkdirSync(path.join(folder, "markdown"), { recursive: true })
+  writeFileSync(path.join(folder, "markdown", "0001-blade-wear.md"), "# Blade wear\n\n## Findings\n\nErosion dominates.\n")
+  const sources = [
+    { url: "https://example.org/blade-wear", title: "Blade wear in tidal arrays", publisher: "example.org", source_type: "academic", fetch_status: "downloaded", markdown_status: "created", markdown_path: path.join(folder, "markdown", "0001-blade-wear.md"), conversion_notes: [] },
+    { url: "https://example.gov/permits", title: "Permitting guidance", publisher: "example.gov", source_type: "government", fetch_status: "failed", fetch_error: "HTTP Error 403: Forbidden", conversion_notes: [] },
+  ]
+  writeFileSync(path.join(folder, "ingested_sources.jsonl"), sources.map((row) => JSON.stringify(row)).join("\n") + "\n")
+
+  await page.goto(`/?run=${runId}&tab=sources`)
+  await expect(page.getByText("Showing 2 of 2 sources")).toBeVisible()
+  await expect(page.getByText("Not downloaded: HTTP Error 403: Forbidden")).toBeVisible()
+  await page.getByLabel("Flagged only").click()
+  await expect(page.getByText("Showing 1 of 2 sources")).toBeVisible()
+  await expect(page).toHaveURL(/flagged=true/)
+  await page.reload()
+  await expect(page.getByText("Showing 1 of 2 sources")).toBeVisible()
+
+  await page.getByLabel("Flagged only").click()
+  await page.getByRole("button", { name: "Read the text of source 1" }).click()
+  await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible()
+})
+
+test("the agent log shows each call, why it used defaults, and its prompt", async ({ page, request }) => {
+  const runId = await finishedRun(request, "Grid frequency response")
+  await page.goto(`/?run=${runId}&tab=log`)
+  await expect(page.getByText(/agent calls: 0 answered, \d+ used built-in defaults/)).toBeVisible()
+  const first = page.getByRole("listitem").filter({ hasText: "1. Protocol: classify the topic" })
+  await expect(first.getByText("Not sent")).toBeVisible()
+  await expect(first.getByText(/Why: Add GEMINI_API_KEY to \.env/)).toBeVisible()
+  await first.getByRole("button", { name: "View call 1" }).click()
+  await expect(page.getByText("You are the Archetype Classifier")).toBeVisible()
+})
+
 test("agents page explains how to set each agent up", async ({ page }) => {
   await page.goto("/agents")
   await expect(page.getByRole("heading", { name: "Gemini" })).toBeVisible()
   await expect(page.getByText("Add GEMINI_API_KEY to .env")).toBeVisible()
   await expect(page.getByText("No search key yet")).toBeVisible()
   await expect(page.getByRole("link", { name: /Agent: Gemini, No API key/ })).toBeVisible()
+
+  const log = page.getByLabel("Keep a log of each agent prompt and reply")
+  await expect(log).toBeChecked()
+  await log.click()
+  await expect(log).not.toBeChecked()
+  await page.reload()
+  await expect(log).not.toBeChecked()
+  await log.click()
+  await expect(log).toBeChecked()
 })

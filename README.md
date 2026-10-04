@@ -75,9 +75,9 @@ npm run ui
 
 That one command installs the UI's dependencies on first run, then starts the Python backend and the UI together, both bound to 127.0.0.1. Ctrl-C stops both. The backend runs with the repo's `.venv` if there is one (so the optional extras above are available without activating it), otherwise with `python3`. You don't need any API keys: Codex signs in from the Agents page. If the backend is already running (`python3 run_app.py`), start just the UI with `npm --prefix ui run dev:web`.
 
-- **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, see its **Brief** (everything you asked for, and which agent ran it), read its files in the **Artifacts** tab (Markdown and JSON shown inline, large files a step at a time), and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
+- **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, see its **Brief** (everything you asked for, and which agent ran it), read its files in the **Artifacts** tab (Markdown and JSON shown inline, large files a step at a time), browse its **Sources** (search and filter, see problems such as failed downloads, read each source's extracted text), follow its **Agent log** (every prompt and reply, and which steps used built-in defaults and why), and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
 - **New run** (`/new`): topic, depth, breadth, and scope controls. It warns you first if the agent isn't ready or no search key is set.
-- **Agents** (`/agents`): choose Codex or Gemini, see what each needs, sign in with ChatGPT, and check which search provider keys are set.
+- **Agents** (`/agents`): choose Codex or Gemini, see what each needs, sign in with ChatGPT, check which search provider keys are set, and turn the agent log on or off.
 
 **Stop** finishes the current step before stopping, so an agent call that's already running completes first. The interactive editors still live in the classic UI, which the Pipeline tab links to: the Atlas map, topic curation, term picking, figure selection, and report preview and export.
 
@@ -100,6 +100,7 @@ The app never sees or stores your ChatGPT credentials: Codex handles sign-in and
 | Storage root | `SUPERRESEARCHER_STORAGE_ROOT` | `<repo>/research_runs` |
 | Agent | Top-bar agent picker (saved to `<storage root>/app-settings.json`) or `SUPERRESEARCHER_AGENT=codex\|gemini` (overrides the picker) | Codex, or Gemini if only a Gemini key is set up |
 | Codex binary | `CODEX_BIN` env, else `codex` on PATH, else Codex.app bundle | auto-detected |
+| Agent log | Agents page, or `"agent_log": false` in `<storage root>/app-settings.json`. Each run keeps its prompts and replies in `<run folder>/logs/`, with credentials removed before saving. | on |
 | Host / port | `--host`, `--port` flags. Starting runs and jobs or changing settings only works from this computer, whatever the host. | `127.0.0.1:8765` |
 | Backend URL for the web UI | `SUPERRESEARCHER_API_URL` (must be this computer) | `http://127.0.0.1:8765` |
 

@@ -12,6 +12,7 @@ import {
   pipelineStatusSchema as S,
   runListSchema,
   runSchema,
+  settingsSchema,
   type JobKind,
   type NewRun,
 } from "./schemas"
@@ -80,6 +81,8 @@ export const api = {
   agents: (refresh = false) => call(`/api/agents${refresh ? "?refresh=1" : ""}`, agentsSchema),
   selectAgent: (selected: string) => call("/api/agents", agentsSchema, { selected }, "PUT"),
   startCodexLogin: () => call("/api/agents/codex/login", loginSchema, {}),
+  settings: () => call("/api/settings", settingsSchema),
+  saveSettings: (agentLog: boolean) => call("/api/settings", settingsSchema, { agent_log: agentLog }, "PUT"),
 
   runs: () => call("/api/runs", runListSchema),
   run: async (runId: string) => call(`/api/runs/${enc(runId)}`, runSchema),
