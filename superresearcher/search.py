@@ -44,7 +44,7 @@ def discover_candidates(
                 progress(message)
             reported.add(provider)
         time.sleep(0.1)
-    if report["errors"] and not report["answered"]:
+    if report["errors"] and not report["answered"] and not (should_stop and should_stop()):
         # Every search failed (bad key, no credits, offline): say why instead of finishing with no sources.
         raise RuntimeError(" ".join(report["errors"].values()))
     return candidates

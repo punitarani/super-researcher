@@ -63,7 +63,7 @@ class StopRunTests(unittest.TestCase):
     def test_discovery_and_ingestion_check_for_stop_between_items(self) -> None:
         plan = {"batches": [{"query": f"q{i}"} for i in range(5)]}
         calls = []
-        with patch.object(search, "search_batch", side_effect=lambda batch, keys: calls.append(batch) or []), patch.object(search.time, "sleep"):
+        with patch.object(search, "search_batch", side_effect=lambda batch, keys, report: calls.append(batch) or []), patch.object(search.time, "sleep"):
             search.discover_candidates(plan, {}, should_stop=lambda: len(calls) >= 2)
         self.assertEqual(len(calls), 2)
 
@@ -74,6 +74,18 @@ class StopRunTests(unittest.TestCase):
             ingest_sources([{"url": "a"}, {"url": "b"}, {"url": "c"}], self.root, {}, should_stop=lambda: len(ingested) >= 1)
         self.assertEqual(len(ingested), 1)
 
+
+    def test_a_stopped_discovery_is_not_reported_as_a_search_failure(self) -> None:
+        plan = {"batches": [{"query": f"q{i}"} for i in range(5)]}
+        calls = []
+
+        def failing(batch, keys, report):
+            calls.append(batch)
+            report["errors"].setdefault("Exa", "Exa search failed: the API key was rejected (HTTP 401). Check EXA_API_KEY.")
+            return []
+
+        with patch.object(search, "search_batch", side_effect=failing), patch.object(search.time, "sleep"):
+            self.assertEqual(search.discover_candidates(plan, {"EXA_API_KEY": "x"}, should_stop=lambda: len(calls) >= 1), [])
 
 class RunHistoryTests(unittest.TestCase):
     def setUp(self) -> None:
