@@ -102,6 +102,16 @@ class ComposeQueryBundleTests(unittest.TestCase):
             self.assertTrue((corpus / "atlas" / "compose" / "query_bundles.json").exists())
             self.assertTrue(all(item["tags"] for item in first["subtopics"]))
 
+    def test_build_progress_ends_with_every_subtopic_done(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = make_compose_corpus(tmp)
+            counts: dict[str, object] = {}  # merged like ComposeBuildJob.event does
+
+            query_bundles.build_compose_query_bundles(str(corpus), force=True, progress=lambda stage, progress, **c: counts.update(c))
+
+            self.assertEqual(counts["completed_subtopics"], 2)
+            self.assertIsNone(counts["current_subtopic"])
+
     def test_finalize_writes_selected_terms_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             corpus = make_compose_corpus(tmp)
