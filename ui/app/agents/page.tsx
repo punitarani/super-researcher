@@ -23,7 +23,9 @@ export default async function AgentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Search providers</CardTitle>
+          <CardTitle>
+            <h2>Search providers</h2>
+          </CardTitle>
           <CardDescription>
             {hasSearch
               ? "Discovery searches with every provider that has a key."

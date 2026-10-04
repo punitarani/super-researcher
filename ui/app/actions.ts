@@ -6,7 +6,7 @@ import { refresh } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 import { api, describeError } from "@/lib/backend"
-import { agentId, newRunSchema, streamTarget, type NewRun } from "@/lib/schemas"
+import { agentId, jobKind, newRunSchema, streamTarget, type Job, type NewRun } from "@/lib/schemas"
 
 export type ActionResult = { error: string | null }
 
@@ -64,4 +64,16 @@ export async function stopRun(runId: string): Promise<ActionResult> {
   const id = streamTarget.shape.id.safeParse(runId)
   if (!id.success) return { error: "Unknown run." }
   return perform(() => api.stopRun(id.data))
+}
+
+const startJobInput = z.object({ kind: jobKind, corpusId: streamTarget.shape.id, force: z.boolean() })
+
+export async function startJob(kind: string, corpusId: string, force: boolean): Promise<ActionResult & { job: Job | null }> {
+  const input = startJobInput.safeParse({ kind, corpusId, force })
+  if (!input.success) return { job: null, error: "Unknown pipeline stage or corpus." }
+  try {
+    return { job: await api.startJob(input.data.kind, input.data.corpusId, input.data.force), error: null }
+  } catch (error) {
+    return { job: null, error: describeError(error) }
+  }
 }

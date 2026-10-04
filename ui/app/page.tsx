@@ -1,11 +1,14 @@
+import { Suspense } from "react"
 import { BackendProblem } from "@/components/backend-problem"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api, attempt } from "@/lib/backend"
 import { loadRunsParams } from "@/lib/search-params"
+import { Pipeline } from "./pipeline"
 import { RunDetail } from "./run-detail"
 import { RunList } from "./run-list"
 
 export default async function RunsPage({ searchParams }: PageProps<"/">) {
-  const { run: runId } = await loadRunsParams(searchParams)
+  const { run: runId, tab, jobs } = await loadRunsParams(searchParams)
   const [runs, run] = await Promise.all([attempt(api.runs()), runId ? attempt(api.run(runId)) : null])
   if (!runs.data) return <BackendProblem title="Can't load runs" message={runs.error} />
 
@@ -20,7 +23,17 @@ export default async function RunsPage({ searchParams }: PageProps<"/">) {
             {runs.data.length ? "Select a run to see its progress and files." : "Your runs will show up here."}
           </div>
         ) : run.data ? (
-          <RunDetail key={run.data.run_id} initial={run.data} pipeline={null} />
+          <RunDetail
+            key={run.data.run_id}
+            initial={run.data}
+            pipeline={
+              tab === "pipeline" ? (
+                <Suspense fallback={<Skeleton className="h-64" />}>
+                  <Pipeline run={run.data} jobs={jobs} />
+                </Suspense>
+              ) : null
+            }
+          />
         ) : (
           <BackendProblem title="Can't open this run" message={run.error} />
         )}

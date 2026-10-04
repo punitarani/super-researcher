@@ -73,7 +73,9 @@ export function AgentPicker({ agents }: { agents: Agents }) {
           return (
             <Card key={agent.id} className={selected ? "ring-2 ring-primary/70" : undefined}>
               <CardHeader>
-                <CardTitle>{agent.label}</CardTitle>
+                <CardTitle>
+                  <h2>{agent.label}</h2>
+                </CardTitle>
                 <CardDescription>{BILLING[agent.id]}</CardDescription>
                 <CardAction>
                   <AgentBadge agent={agent} />

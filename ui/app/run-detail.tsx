@@ -179,7 +179,7 @@ function Artifacts({ run }: { run: Run }) {
         <ul className="divide-y rounded-lg border">
           {files.map(([name, path]) => (
             <li key={name} className="px-3 py-1">
-              <PathRow label={name.replaceAll("_", " ")} path={path} />
+              <PathRow label={name.replaceAll("_", " ")} path={path} shown={path.startsWith(`${run.dossier_path}/`) ? path.slice(run.dossier_path.length + 1) : path} />
             </li>
           ))}
         </ul>
@@ -200,13 +200,13 @@ function Artifacts({ run }: { run: Run }) {
   )
 }
 
-function PathRow({ label, path }: { label: string; path: string }) {
+function PathRow({ label, path, shown = path }: { label: string; path: string; shown?: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
         <div className="font-medium capitalize">{label}</div>
         <code className="block truncate font-mono text-xs text-muted-foreground" title={path}>
-          {path}
+          {shown}
         </code>
       </div>
       <CopyButton value={path} label={`Copy ${label} path`} />
