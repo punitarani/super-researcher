@@ -65,5 +65,6 @@ describe("streamTarget", () => {
     expect(streamTarget.safeParse({ kind: "atlas", id: "a_Corpus-1700000000" }).success).toBe(true)
     expect(streamTarget.safeParse({ kind: "run", id: "../etc/passwd" }).success).toBe(false)
     expect(streamTarget.safeParse({ kind: "shell", id: "x" }).success).toBe(false)
+    for (const id of [".", ".."]) expect(streamTarget.safeParse({ kind: "run", id }).success).toBe(false)
   })
 })

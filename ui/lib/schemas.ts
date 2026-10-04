@@ -83,10 +83,13 @@ export const jobSchema = z.object({
 })
 export type Job = z.infer<typeof jobSchema>
 
+// Run, job and corpus ids: plain names, never "." or ".." (which a URL would resolve as a path).
+export const ID_PATTERN = /^(?!\.\.?$)[\w.-]{1,200}$/
+
 // Things a stream can follow: a research run, or one of the corpus jobs.
 export const streamTarget = z.object({
   kind: z.enum(["run", ...JOB_KINDS]),
-  id: z.string().regex(/^[\w.-]{1,200}$/),
+  id: z.string().regex(ID_PATTERN),
 })
 
 const exists = z.object({ exists: z.boolean() }).catch({ exists: false })

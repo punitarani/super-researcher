@@ -14,9 +14,17 @@ describe("snapshotStream", () => {
     )
   })
 
-  it("reports a failed load and closes", async () => {
-    const stream = snapshotStream(() => Promise.reject(new Error("Run not found")), new AbortController().signal, 0)
+  it("reports a load that keeps failing, and closes", async () => {
+    let loads = 0
+    const stream = snapshotStream(() => (loads++, Promise.reject(new Error("Run not found"))), new AbortController().signal, 0)
     expect(await read(stream)).toBe('event: fail\ndata: {"message":"Run not found"}\n\n')
+    expect(loads).toBe(3)
+  })
+
+  it("rides out a failed poll", async () => {
+    const loads = [() => Promise.reject(new Error("backend restarting")), async () => ({ state: "completed" })]
+    const stream = snapshotStream(() => loads.shift()!(), new AbortController().signal, 0)
+    expect(await read(stream)).toBe('event: snapshot\ndata: {"state":"completed"}\n\n' + "event: end\ndata: {}\n\n")
   })
 
   it("stops polling when the browser disconnects", async () => {

@@ -22,6 +22,7 @@ export function useLiveSnapshot<T extends { state: string } | null>(url: string 
     setRendered(initial)
     setData(initial)
     setGeneration((value) => value + 1)
+    setError(null) // fresh server data: follow it again instead of keeping a stale "stopped" message
   }
   const liveUrl = url && data && isActive(data.state) ? url : null
 

@@ -33,7 +33,7 @@ export function RunDetail({ initial, pipeline }: { initial: Run; pipeline: React
 
   return (
     <article className="space-y-4">
-      <Link href={runsHref({ q, state })} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground md:hidden">
+      <Link href={runsHref("/", { q, state })} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground md:hidden">
         <ArrowLeft className="size-4" /> All runs
       </Link>
 

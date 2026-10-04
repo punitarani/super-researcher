@@ -6,6 +6,7 @@ import {
   agentsSchema,
   configSchema,
   errorSchema,
+  ID_PATTERN,
   jobSchema,
   loginSchema,
   pipelineStatusSchema as S,
@@ -67,7 +68,11 @@ const JOBS: Record<JobKind, { start: string; poll: string; force?: string }> = {
   compile: { start: "/api/publish/compile", poll: "/api/publish/jobs/", force: "force_plan" },
 }
 
-const enc = encodeURIComponent
+// An id goes into a backend URL path, so refuse anything but a plain id before building one.
+function enc(id: string) {
+  if (!ID_PATTERN.test(id)) throw new BackendError("Not found.", 404)
+  return encodeURIComponent(id)
+}
 const orNull = <T,>(promise: Promise<T>) => promise.catch(() => null)
 
 export const api = {
@@ -77,11 +82,11 @@ export const api = {
   startCodexLogin: () => call("/api/agents/codex/login", loginSchema, {}),
 
   runs: () => call("/api/runs", runListSchema),
-  run: (runId: string) => call(`/api/runs/${enc(runId)}`, runSchema),
+  run: async (runId: string) => call(`/api/runs/${enc(runId)}`, runSchema),
   startRun: (input: NewRun) => call("/api/runs", runSchema, input),
-  stopRun: (runId: string) => call(`/api/runs/${enc(runId)}/stop`, runSchema, {}),
+  stopRun: async (runId: string) => call(`/api/runs/${enc(runId)}/stop`, runSchema, {}),
 
-  job: (kind: JobKind, jobId: string) => call(JOBS[kind].poll + enc(jobId), jobSchema),
+  job: async (kind: JobKind, jobId: string) => call(JOBS[kind].poll + enc(jobId), jobSchema),
   startJob: (kind: JobKind, corpusId: string, force: boolean) => {
     const { start, force: forceKey } = JOBS[kind]
     return call(start, jobSchema, { corpus_id: corpusId, ...(forceKey && { [forceKey]: force }) })

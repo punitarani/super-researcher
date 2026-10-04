@@ -27,6 +27,14 @@ describe("api", () => {
     expect(error).toMatchObject({ message, status: 409 })
   })
 
+  it("never puts a dot-segment id into a backend URL", async () => {
+    const fetch = vi.fn(() => reply({}))
+    vi.stubGlobal("fetch", fetch)
+    await expect(api.run("..")).rejects.toMatchObject({ status: 404 })
+    await expect(api.job("atlas", ".")).rejects.toMatchObject({ status: 404 })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it("rejects responses with an unexpected shape", async () => {
     vi.stubGlobal("fetch", vi.fn(() => reply({ selected: "claude" })))
     await expect(api.agents()).rejects.toMatchObject({ status: 502 })
