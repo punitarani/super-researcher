@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -73,7 +74,11 @@ class FakeCodexTestCase(unittest.TestCase):
             "CODEX_API_KEY": "sk-must-not-reach-codex",
             "OPENAI_API_KEY": "sk-must-not-reach-codex",
         }
-        for patcher in (patch.dict(os.environ, env), patch.object(codex, "codex_bin", return_value=self.binary)):
+        for patcher in (
+            patch.dict(os.environ, env),
+            patch.object(codex, "codex_bin", return_value=self.binary),
+            patch.object(codex, "_auth_rejected_at", None),
+        ):
             patcher.start()
             self.addCleanup(patcher.stop)
         codex.invalidate_status()
@@ -153,11 +158,31 @@ class CodexExecTests(FakeCodexTestCase):
         self.assertIn("codex login", str(expired.exception))
         self.assertIsNone(codex._status_cache)  # next status check asks Codex again
 
+        codex._auth_rejected_at = None  # signed in again
         self.set_fake(exec="offline")
         with self.assertRaises(CodexError) as offline:
             codex.complete("hi")
         self.assertFalse(offline.exception.fatal)
         self.assertIn("internet connection", str(offline.exception))
+
+    def test_rejected_sign_in_stays_expired_until_signing_in_again(self) -> None:
+        self.set_fake(exec="expired")
+        with self.assertRaises(CodexError):
+            codex.complete("hi")
+
+        # `codex login status` still reports the stored tokens, so the app remembers the rejection.
+        expired = codex.status()
+        self.assertEqual((expired.state, expired.message), ("expired", codex.EXPIRED_HELP))
+
+        auth = self.codex_home / "auth.json"
+        auth.write_text("{}", encoding="utf-8")
+        os.utime(auth, (codex._auth_rejected_at + 1, codex._auth_rejected_at + 1))
+        self.assertEqual(codex.status(refresh=True).state, "ready")
+
+    def test_only_a_401_status_counts_as_a_rejected_sign_in(self) -> None:
+        failure = subprocess.CompletedProcess([], 1, json.dumps({"type": "turn.failed", "error": {"message": "server error, request id 94013"}}), "")
+        self.assertFalse(codex._classify_failure(failure).fatal)
+        self.assertIsNone(codex._auth_rejected_at)
 
     def test_complete_refuses_to_run_without_a_chatgpt_sign_in(self) -> None:
         self.set_fake(login="api_key")

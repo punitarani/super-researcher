@@ -44,7 +44,7 @@ WRONG_AUTH_HELP = (
 )
 EXPIRED_HELP = "Your ChatGPT sign-in for Codex has expired or was revoked. Click Sign in with ChatGPT or run `codex login`."
 
-_AUTH_ERRORS = ("401", "unauthorized", "sign in again", "not logged in", "login is required")
+_AUTH_ERRORS = re.compile(r"\b401\b|unauthorized|sign in again|not logged in|login is required")
 _PLAN_ERRORS = ("usage limit", "out of credits", "spend cap", "upgrade to plus")
 _NETWORK_ERRORS = ("connection failed", "stream disconnected", "error sending request", "timed out", "routing discovery")
 _STDERR_NOISE = re.compile(r"^(WARNING|Reading additional input|\d{4}-\d\d-\d\dT)")
@@ -58,7 +58,7 @@ class CodexError(RuntimeError):
 
 @dataclass(frozen=True)
 class CodexStatus:
-    state: str  # ready | not_installed | outdated | signed_out | wrong_auth | error
+    state: str  # ready | not_installed | outdated | signed_out | wrong_auth | expired | error
     message: str
 
     @property
@@ -67,6 +67,10 @@ class CodexStatus:
 
 
 _status_cache: tuple[float, CodexStatus] | None = None
+_status_epoch = 0  # bumped on invalidation so an in-flight check can't cache a stale result
+# When OpenAI last rejected the stored ChatGPT sign-in. `codex login status` only reads the
+# stored tokens, so it keeps saying "Logged in" after they expire or are revoked.
+_auth_rejected_at: float | None = None
 _login_process: subprocess.Popen[str] | None = None
 _login_lock = threading.Lock()
 
@@ -76,13 +80,16 @@ def status(refresh: bool = False) -> CodexStatus:
     cached = _status_cache
     if not refresh and cached and time.monotonic() - cached[0] < STATUS_TTL_SECONDS:
         return cached[1]
+    epoch = _status_epoch
     current = _check_status()
-    _status_cache = (time.monotonic(), current)
+    if epoch == _status_epoch:
+        _status_cache = (time.monotonic(), current)
     return current
 
 
 def invalidate_status() -> None:
-    global _status_cache
+    global _status_cache, _status_epoch
+    _status_epoch += 1
     _status_cache = None
 
 
@@ -90,12 +97,18 @@ def complete(prompt: str, model: str | None = None) -> str:
     """Run one prompt with `codex exec` in an isolated, read-only, tool-free session."""
     current = status()
     if not current.ready:
-        raise CodexError(current.message, fatal=True)
+        # A failed status check may be transient (a slow keyring prompt, a timeout), so let it retry.
+        raise CodexError(current.message, fatal=current.state != "error")
     found = codex_bin()
     if found is None:
         invalidate_status()
         raise CodexError(INSTALL_HELP, fatal=True)
     binary = str(found)
+    try:
+        mtime = Path(binary).stat().st_mtime
+    except OSError as exc:
+        invalidate_status()
+        raise CodexError(f"Couldn't run Codex at {binary}: {exc}") from exc
     with tempfile.TemporaryDirectory(prefix="superresearcher-codex-") as tmp:
         workdir = Path(tmp, "work")
         workdir.mkdir()
@@ -107,7 +120,7 @@ def complete(prompt: str, model: str | None = None) -> str:
             "-c", 'web_search="disabled"', "-c", 'model_reasoning_effort="high"',
             *_credential_store_override(),
         ]
-        available = _features(binary, Path(binary).stat().st_mtime)
+        available = _features(binary, mtime)
         for feature in DISABLED_FEATURES:
             if feature in available:
                 cmd += ["--disable", feature]
@@ -137,17 +150,26 @@ def start_login(timeout: float = 15) -> str:
         raise CodexError(INSTALL_HELP)
     with _login_lock:
         if _login_process and _login_process.poll() is None:
+            # Let the old sign-in release its localhost callback port before starting another.
             _login_process.terminate()
-        process = subprocess.Popen(
-            [str(binary), "login"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=_codex_env(),
-        )
+            try:
+                _login_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _login_process.kill()
+                _login_process.wait()
+        try:
+            process = subprocess.Popen(
+                [str(binary), "login"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=_codex_env(),
+            )
+        except OSError as exc:
+            raise CodexError(f"Couldn't run Codex at {binary}: {exc}") from exc
         _login_process = process
     first_url: queue.Queue[str] = queue.Queue()
     threading.Thread(target=_watch_login, args=(process, first_url), daemon=True).start()
@@ -161,13 +183,15 @@ def start_login(timeout: float = 15) -> str:
 
 
 def _watch_login(process: subprocess.Popen[str], first_url: queue.Queue[str]) -> None:
+    global _auth_rejected_at
     output = []
     for line in process.stdout or ():
         output.append(line)
         match = re.search(r"https://\S+", line)
         if match:
             first_url.put(match.group(0))
-    process.wait()
+    if process.wait() == 0:
+        _auth_rejected_at = None
     invalidate_status()
     first_url.put(_first_meaningful_line("".join(output)))  # only read if no URL came first
 
@@ -190,22 +214,41 @@ def _check_status() -> CodexStatus:
         return CodexStatus("error", f"Couldn't run Codex at {binary}: {exc}")
     output = login.stdout + login.stderr  # Codex prints the status to stderr
     if "Logged in using ChatGPT" in output:
+        if _sign_in_rejected():
+            return CodexStatus("expired", EXPIRED_HELP)
         return CodexStatus("ready", "Signed in with ChatGPT. Prompts run on your ChatGPT plan.")
-    if login.returncode == 0:
-        return CodexStatus("wrong_auth", WRONG_AUTH_HELP)
     if "Not logged in" in output:
         return CodexStatus("signed_out", SIGN_IN_HELP)
-    return CodexStatus("error", f"Couldn't check Codex sign-in: {_first_meaningful_line(login.stderr)}")
+    if login.returncode == 0:
+        return CodexStatus("wrong_auth", WRONG_AUTH_HELP)
+    return CodexStatus("error", f"Couldn't check Codex sign-in: {_first_meaningful_line(output)}")
+
+
+def _sign_in_rejected() -> bool:
+    """True while the stored sign-in is one OpenAI already rejected (cleared by signing in again)."""
+    global _auth_rejected_at
+    rejected_at = _auth_rejected_at
+    if rejected_at is None:
+        return False
+    try:
+        if (_codex_home() / "auth.json").stat().st_mtime > rejected_at:
+            _auth_rejected_at = None  # signed in again, e.g. `codex login` in a terminal
+            return False
+    except OSError:
+        pass
+    return True
 
 
 def _classify_failure(result: subprocess.CompletedProcess[str]) -> CodexError:
+    global _auth_rejected_at
     message = (
         _failure_from_events(result.stdout)
         or _first_meaningful_line(result.stderr)
         or f"Codex exited with code {result.returncode}."
     )
     lowered = message.lower().replace("’", "'")
-    if any(token in lowered for token in _AUTH_ERRORS):
+    if _AUTH_ERRORS.search(lowered):
+        _auth_rejected_at = time.time()
         invalidate_status()
         return CodexError(EXPIRED_HELP, fatal=True)
     if any(token in lowered for token in _PLAN_ERRORS):
@@ -223,8 +266,11 @@ def _failure_from_events(jsonl: str) -> str:
             event = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(event, dict):
+            continue
         if event.get("type") == "turn.failed":
-            return str((event.get("error") or {}).get("message", ""))
+            error = event.get("error")
+            return str(error.get("message", "") if isinstance(error, dict) else error or "")
         if event.get("type") == "error" and not str(event.get("message", "")).startswith("Reconnecting"):
             message = str(event.get("message", ""))
     return message
@@ -236,9 +282,8 @@ def _credential_store_override() -> list[str]:
     Without it, users who keep their Codex sign-in in the OS keyring would look
     signed in to `codex login status` but signed out to `codex exec`.
     """
-    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     try:
-        text = (home / "config.toml").read_text(encoding="utf-8")
+        text = (_codex_home() / "config.toml").read_text(encoding="utf-8")
     except OSError:
         return []
     top_level = re.split(r"^\s*\[", text, maxsplit=1, flags=re.MULTILINE)[0]
@@ -271,6 +316,10 @@ def _run(cmd: list[str], stdin: str = "", timeout: float = 20, cwd: Path | None 
         env=_codex_env(),
         check=False,
     )
+
+
+def _codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
 
 
 def _codex_env() -> dict[str, str]:

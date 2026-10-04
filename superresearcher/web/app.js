@@ -94,7 +94,7 @@ const STAGE_IDS = ["scope", "map", "curate", "compose", "publish", "pulbish"];
 const COMPOSE_REFINE_THRESHOLDS = [0.25, 0.2, 0.15, 0.1, 0.08];
 const $ = (id) => document.getElementById(id);
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const SIGN_IN_STATES = new Set(["signed_out", "wrong_auth"]);
+const SIGN_IN_STATES = new Set(["signed_out", "wrong_auth", "expired"]);
 
 async function init() {
   state.theme = storedTheme();

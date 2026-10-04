@@ -265,7 +265,13 @@ class Handler(BaseHTTPRequestHandler):
                 agent = None
             if agent not in llm.AGENTS:
                 return self.send_json({"error": f"Unknown agent: {agent}"}, status=400)
-            save_app_settings({**load_app_settings(), "agent": agent})
+            override = llm.agent_override()
+            if override and override != agent:
+                return self.send_json({"error": f"SUPERRESEARCHER_AGENT={override} is set, so the app always uses {llm.AGENTS[override]}. Unset it and restart the app to choose here."}, status=409)
+            try:
+                save_app_settings({**load_app_settings(), "agent": agent})
+            except OSError as exc:
+                return self.send_json({"error": f"Couldn't save the agent choice: {exc}"}, status=500)
             return self.send_json(llm.agents_payload())
         atlas_route = parse_atlas_route(parsed.path)
         if not atlas_route:

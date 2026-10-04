@@ -12,7 +12,8 @@ FIRECRAWL_API_KEY=
 
 # Agent: pick Codex or Gemini from the top bar in the app.
 # Codex needs no key here: install the Codex CLI and run `codex login` to use your ChatGPT plan.
-# CODEX_MODEL=           # optional; by default Codex picks the best model for your plan
+# Optional: by default Codex picks the best model for your plan. Keep comments on their own line.
+# CODEX_MODEL=
 
 # Gemini agent
 GEMINI_API_KEY=

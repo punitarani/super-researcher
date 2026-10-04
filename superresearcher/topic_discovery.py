@@ -150,7 +150,8 @@ def start_topic_discovery_job(corpus_id_or_path: str, force: bool = False) -> To
         snap = job.snapshot()
         if snap["corpus_path"] == str(corpus) and snap["state"] in {"queued", "running"}:
             return job
-    require_ready_agent()
+    if force or not topic_tree_path(corpus).exists():  # a cached topic tree needs no agent
+        require_ready_agent()
     job = TopicDiscoveryJob(corpus, force=force)
     job.start()
     return job

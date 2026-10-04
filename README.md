@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-93%20passing-brightgreen)]()
 
 **SuperResearcher is a local-first research harness.** Give it a topic and it runs the research end to end: planning the protocol, discovering and downloading real sources, building a durable corpus with readable sidecars, mapping it in an embedding Atlas, and compiling a publishable, consulting-grade report. It reports progress every 5 minutes and gives honest quality verdicts — Pass, Pass with warnings, or Fail.
 
@@ -103,7 +103,7 @@ superresearcher/        Python package (stdlib-only core)
 superresearcher/web/       Vanilla-JS UI (index.html, app.js, styles.css)
 superresearcher/web/atlas-src/  Atlas frontend source (vite → web/atlas/)
 outputs/                Published example reports (PDF)
-tests/                  91 unit tests
+tests/                  93 unit tests
 docs/                   Product requirements + original build plans
 ```
 

@@ -46,8 +46,14 @@ def extract_json(text: str) -> Any:
 AGENTS = {"codex": "Codex", "gemini": "Gemini"}
 
 
+def agent_override() -> str | None:
+    """The agent forced by SUPERRESEARCHER_AGENT, which takes precedence over the saved choice."""
+    agent = os.environ.get("SUPERRESEARCHER_AGENT")
+    return agent if agent in AGENTS else None
+
+
 def selected_agent(keys: dict[str, str]) -> str:
-    agent = os.environ.get("SUPERRESEARCHER_AGENT") or load_app_settings().get("agent")
+    agent = agent_override() or load_app_settings().get("agent")
     if agent in AGENTS:
         return agent
     return "gemini" if codex_bin() is None and gemini_key(keys) else "codex"
