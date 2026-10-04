@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -142,6 +143,17 @@ class RunApiTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as form_post:
                 request_json(f"{base}/api/runs/x_Corpus/stop", "POST")
             self.assertEqual(form_post.exception.code, 403)
+
+            # A page that points its own domain at 127.0.0.1 (DNS rebinding) sends its own Host.
+            rebound = urllib.request.Request(
+                f"{base}/api/runs/x_Corpus/stop",
+                data=b"{}",
+                headers={"Content-Type": "application/json", "Host": "evil.example:8765"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as rebinding:
+                urllib.request.urlopen(rebound, timeout=5)
+            self.assertEqual(rebinding.exception.code, 403)
 
     def test_list_and_get_routes_use_run_history(self) -> None:
         with patch.object(server, "list_runs", return_value=[{"run_id": "a_Corpus"}]), patch.object(

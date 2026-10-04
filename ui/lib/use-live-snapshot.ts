@@ -14,24 +14,36 @@ export function useLiveSnapshot<T extends { state: string } | null>(url: string 
   const router = useRouter()
   const [data, setData] = useState(initial)
   const [rendered, setRendered] = useState(initial)
+  // Bumped when server data is adopted. That data can be older than what the stream already
+  // showed, and the stream only sends changes, so reconnecting makes it resend the current snapshot.
+  const [generation, setGeneration] = useState(0)
   const [error, setError] = useState<string | null>(null)
   if (initial !== rendered) {
     setRendered(initial)
     setData(initial)
+    setGeneration((value) => value + 1)
   }
   const liveUrl = url && data && isActive(data.state) ? url : null
 
   useEffect(() => {
     if (!liveUrl) return
     const source = new EventSource(liveUrl)
-    source.addEventListener("snapshot", (event) => {
-      const parsed = schema.safeParse(JSON.parse(event.data))
-      if (parsed.success) setData(parsed.data)
-    })
-    source.addEventListener("end", () => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
       source.close()
       router.refresh()
+    }
+    source.addEventListener("snapshot", (event) => {
+      const parsed = schema.safeParse(JSON.parse(event.data))
+      if (!parsed.success) return
+      setData(parsed.data)
+      // A finished snapshot stops this effect on the next render, which can come before
+      // the `end` event, so finish here rather than relying on `end` to refresh the page.
+      if (parsed.data && !isActive(parsed.data.state)) finish()
     })
+    source.addEventListener("end", finish)
     source.addEventListener("fail", (event) => {
       source.close()
       setError(JSON.parse(event.data).message)
@@ -41,7 +53,7 @@ export function useLiveSnapshot<T extends { state: string } | null>(url: string 
       if (source.readyState === EventSource.CLOSED) setError("Lost the connection to the app. Refresh the page to reconnect.")
     }
     return () => source.close()
-  }, [liveUrl, schema, router])
+  }, [liveUrl, generation, schema, router])
 
   return { data, error }
 }

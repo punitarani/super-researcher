@@ -80,7 +80,8 @@ class ResearchRun:
                 return True
             self.status["stop_requested"] = True
             self._stop.set()
-        self.event("Stop requested. Stopping after the current step.")
+            # Logged under the same lock, so it can't land after the run's own "Run stopped."
+            self._record("Stop requested. Stopping after the current step.")
         return True
 
     def _step(self, message: str, milestone: str, progress: int, **counts: Any) -> None:
@@ -91,14 +92,18 @@ class ResearchRun:
 
     def event(self, message: str, milestone: str | None = None, progress: int | None = None, **counts: Any) -> None:
         with self._lock:
-            if milestone:
-                self.status["milestone"] = milestone
-            if progress is not None:
-                self.status["progress"] = progress
-            self.status["counts"].update({k: v for k, v in counts.items() if v is not None})
-            self.status["events"].append({"time": datetime.now().isoformat(timespec="seconds"), "message": message})
-            self.status["events"] = self.status["events"][-200:]
-            atomic_write_json(self.dossier / "run.json", self.status)
+            self._record(message, milestone, progress, **counts)
+
+    def _record(self, message: str, milestone: str | None = None, progress: int | None = None, **counts: Any) -> None:
+        """Append an event and save run.json. The caller holds the lock."""
+        if milestone:
+            self.status["milestone"] = milestone
+        if progress is not None:
+            self.status["progress"] = progress
+        self.status["counts"].update({k: v for k, v in counts.items() if v is not None})
+        self.status["events"].append({"time": datetime.now().isoformat(timespec="seconds"), "message": message})
+        self.status["events"] = self.status["events"][-200:]
+        atomic_write_json(self.dossier / "run.json", self.status)
 
     def _heartbeat(self) -> None:
         while True:
@@ -237,7 +242,8 @@ def get_run(run_id: str, root: Path = DEFAULT_STORAGE_ROOT) -> dict[str, Any] | 
 
 def list_runs(root: Path = DEFAULT_STORAGE_ROOT) -> list[dict[str, Any]]:
     """Every run, newest first: this process's live runs plus the ones saved under the storage root."""
-    live = {run_id: run.snapshot() for run_id, run in RUNS.items()}
+    # Copy first: request threads add runs to RUNS while this iterates.
+    live = {run_id: run.snapshot() for run_id, run in list(RUNS.items())}
     saved = (_saved_run(path) for path in root.glob("*_Corpus/run.json")) if root.exists() else ()
     runs = {**{run["run_id"]: run for run in saved if run}, **live}
     rows = [{k: v for k, v in run.items() if k not in ("events", "files")} for run in runs.values()]

@@ -57,6 +57,11 @@ export const runSummarySchema = z.object({
 })
 export type RunSummary = z.infer<typeof runSummarySchema>
 
+// History is read from every saved run.json, so one unreadable run is skipped instead of hiding them all.
+export const runListSchema = z
+  .array(z.unknown())
+  .transform((rows) => rows.flatMap((row) => runSummarySchema.safeParse(row).data ?? []))
+
 export const runSchema = runSummarySchema.extend({
   events: z.array(z.object({ time: z.string(), message: z.string() })).catch([]),
   files: z.record(z.string(), z.string()).catch({}),
@@ -90,7 +95,8 @@ export const pipelineStatusSchema = {
     corpora: z.array(z.object({ id: z.string(), atlas_ready: z.boolean(), chunk_count: z.number().catch(0), markdown_count: z.number().catch(0) })),
   }),
   topics: z.object({ raw: exists, curated: exists }),
-  compose: z.object({ generated: exists, finalized: exists }),
+  // Generated terms only count while they match the curated topics (`valid`), as in the classic UI.
+  compose: z.object({ generated: z.object({ valid: z.boolean() }).catch({ valid: false }), finalized: exists }),
   publish: z.object({ paper: z.object({ exists: z.boolean(), path: z.string() }).catch({ exists: false, path: "" }) }),
   atlasDependencies: z.object({ ready_for_build: z.boolean(), install_commands: z.array(z.string()).catch([]) }),
 }

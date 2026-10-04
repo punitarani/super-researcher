@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
-import { configSchema, newRunSchema, runSchema, streamTarget } from "@/lib/schemas"
+import { configSchema, newRunSchema, runListSchema, runSchema, streamTarget } from "@/lib/schemas"
 
 const validRun = { topic: "  Grid storage  ", depth: "high", breadth: "medium", final_source_count: "12" }
 
@@ -49,6 +49,14 @@ describe("backend responses", () => {
     })
     expect(run.stop_requested).toBe(false)
     expect(run).not.toHaveProperty("settings")
+  })
+})
+
+describe("runListSchema", () => {
+  it("skips a saved run it can't read instead of failing the whole history", () => {
+    const good = { run_id: "a_Corpus", topic: "a", state: "completed", progress: 100, dossier_path: "/runs/a", counts: {} }
+    const runs = runListSchema.parse([good, { run_id: "b_Corpus", state: "exploded" }, "not a run"])
+    expect(runs.map((run) => run.run_id)).toEqual(["a_Corpus"])
   })
 })
 

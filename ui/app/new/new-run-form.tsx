@@ -14,11 +14,12 @@ import { BREADTHS, DEPTHS, type Config, type NewRun } from "@/lib/schemas"
 
 const DEPTH_LABELS: Record<(typeof DEPTHS)[number], string> = { low: "Low", medium: "Medium", high: "High", extra_high: "Extra high", ludicrous: "Ludicrous" }
 const BREADTH_LABELS: Record<(typeof BREADTHS)[number], string> = { low: "Low", medium: "Medium", high: "High" }
-const SCOPE_FIELDS: [keyof NewRun, string, string][] = [
-  ["audience", "Audience", "Executives, founders, engineers"],
-  ["geographic_scope", "Geographic scope", "Global, US, EU, India"],
-  ["time_horizon", "Time horizon", "Current state plus 3–5 year outlook"],
-  ["objective", "Objective", "Decision-grade corpus for a strategy memo"],
+// The character limits match newRunSchema, so the browser stops input the server would reject.
+const SCOPE_FIELDS: [keyof NewRun, string, string, number][] = [
+  ["audience", "Audience", "Executives, founders, engineers", 300],
+  ["geographic_scope", "Geographic scope", "Global, US, EU, India", 300],
+  ["time_horizon", "Time horizon", "Current state plus 3–5 year outlook", 300],
+  ["objective", "Objective", "Decision-grade corpus for a strategy memo", 500],
 ]
 const LIST_FIELDS: [keyof NewRun, string][] = [
   ["must_include", "Must include"],
@@ -123,9 +124,9 @@ export function NewRunForm({ config }: { config: Config }) {
           Scope controls <span className="font-normal text-muted-foreground">(optional)</span>
         </summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {SCOPE_FIELDS.map(([name, label, placeholder]) => (
+          {SCOPE_FIELDS.map(([name, label, placeholder, maxLength]) => (
             <Field key={name} name={name} label={label} error={errorFor(name)}>
-              <Input id={name} name={name} maxLength={500} defaultValue={value(name)} placeholder={placeholder} aria-describedby={describedBy(name)} />
+              <Input id={name} name={name} maxLength={maxLength} defaultValue={value(name)} placeholder={placeholder} aria-describedby={describedBy(name)} />
             </Field>
           ))}
           {LIST_FIELDS.map(([name, label]) => (
