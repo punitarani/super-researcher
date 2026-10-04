@@ -13,8 +13,8 @@ from typing import Any
 from urllib.parse import quote
 
 from . import atlas, query_bundles
-from .config import atomic_write_json, atomic_write_text, load_api_keys, slugify
-from .llm import LLMClient, require_ready_agent
+from .config import atomic_write_json, atomic_write_text, slugify
+from .llm import LLMClient, client_for, require_ready_agent
 
 
 PUBLISH_VERSION = "publish-markdown-v1"
@@ -174,9 +174,9 @@ def create_publish_plan(corpus: str = "latest", custom_prompts: dict[str, str] |
     sections = finalized.get("subtopics", [])
     if not sections:
         raise RuntimeError("No finalized Compose sections found. Finalize Compose first.")
-    llm = llm or LLMClient(load_api_keys())
+    llm = llm or client_for(corpus_path)
     fallback = fallback_toc_plan(corpus_path, sections)
-    generated = llm.json_call(toc_prompt(corpus_path, sections), fallback)
+    generated = llm.json_call(toc_prompt(corpus_path, sections), fallback, step="Publish plan: table of contents")
     plan_sections = validate_toc_sections(generated, sections)
     out = {
         "version": PUBLISH_VERSION,
@@ -249,7 +249,7 @@ class PublishCompileJob:
             with self._lock:
                 self.status["state"] = "running"
                 self.status["started_at"] = datetime.now().isoformat(timespec="seconds")
-            llm = LLMClient(load_api_keys())
+            llm = client_for(self.corpus)
             result = compile_publish_paper(
                 str(self.corpus),
                 custom_prompts=self.custom_prompts,
@@ -297,7 +297,7 @@ def compile_publish_paper(
     progress=None,
 ) -> dict[str, Any]:
     corpus_path = query_bundles.resolve_topic_corpus(corpus)
-    llm = llm or LLMClient(load_api_keys())
+    llm = llm or client_for(corpus_path)
     custom_prompts = normalize_custom_prompts(custom_prompts or {})
     if progress:
         progress("Preparing publish plan", 5)
@@ -333,7 +333,7 @@ def compile_publish_paper(
         selected_chunks = cap_chunks(ranked)
         update_source_index(source_index, selected_chunks)
         prompt = section_prompt(corpus_path, plan, plan_section, source_section, selected_chunks, continuity_summary)
-        section_markdown = llm.text_call(prompt)
+        section_markdown = llm.text_call(prompt, step=f"Compile: section {index}, {plan_section['title']}")
         if not section_markdown.strip().startswith("#"):
             section_markdown = f"## {plan_section['title']}\n\n{section_markdown.strip()}\n"
         path = section_file_path(corpus_path, index, plan_section)
@@ -608,7 +608,7 @@ New section:
 {section_markdown[:20000]}
 """
     try:
-        return llm.text_call(prompt).strip()[:7000]
+        return llm.text_call(prompt, step=f"Compile: running summary after {plan_section['title']}").strip()[:7000]
     except Exception:
         fallback = f"{previous_summary}\n\n{plan_section['title']}: {strip_markdown(section_markdown)[:1200]}".strip()
         return fallback[-7000:]

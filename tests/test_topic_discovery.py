@@ -43,7 +43,7 @@ class FakeLLM:
         self.fail = fail
         self.prompts: list[str] = []
 
-    def text_call(self, prompt: str) -> str:
+    def text_call(self, prompt: str, step: str = "") -> str:
         self.prompts.append(prompt)
         if self.fail:
             raise RuntimeError("fake llm failed")

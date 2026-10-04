@@ -157,10 +157,10 @@ def comprehensive_defaults(payload: dict[str, Any]) -> dict[str, str]:
 def build_protocol(payload: dict[str, Any], llm: LLMClient) -> dict[str, Any]:
     topic = payload["topic"].strip()
     context = payload.get("context", "").strip()
-    archetypes = llm.json_call(classifier_prompt(topic, context), fallback_archetypes(topic, context))
+    archetypes = llm.json_call(classifier_prompt(topic, context), fallback_archetypes(topic, context), step="Protocol: classify the topic")
     if archetypes.get("primary_archetype") not in ARCHETYPES:
         archetypes = fallback_archetypes(topic, context)
-    rubric = llm.json_call(rubric_prompt(topic, context, archetypes), fallback_rubric(payload))
+    rubric = llm.json_call(rubric_prompt(topic, context, archetypes), fallback_rubric(payload), step="Protocol: scoring rubric")
     if "rubric_assessment" not in rubric:
         rubric = fallback_rubric(payload)
     defaults = comprehensive_defaults(payload)

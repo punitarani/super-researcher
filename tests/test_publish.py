@@ -26,7 +26,7 @@ class FakeLLM:
     def __init__(self) -> None:
         self.section_calls = 0
 
-    def json_call(self, prompt: str, fallback: object) -> object:
+    def json_call(self, prompt: str, fallback: object, step: str = "") -> object:
         return {
             "sections": [
                 {"section_id": "bad", "title": "Invented", "source_topic_id": "missing", "rationale": "bad"},
@@ -34,7 +34,7 @@ class FakeLLM:
             ]
         }
 
-    def text_call(self, prompt: str) -> str:
+    def text_call(self, prompt: str, step: str = "") -> str:
         if "Compact the running paper summary" in prompt:
             return "Prior sections covered safety and market evidence."
         self.section_calls += 1

@@ -10,6 +10,7 @@ from typing import Any
 
 from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text, ensure_storage_root, load_api_keys, redact_keys, slugify
 from .ingest import ingest_sources
+from .agent_log import AgentLog
 from .llm import LLMClient, agent_status
 from .phase1 import build_protocol
 from .phase2 import (
@@ -126,7 +127,7 @@ class ResearchRun:
             self.status["state"] = "running"
             self.status["started_at"] = datetime.now().isoformat(timespec="seconds")
             self.event("Run started. Creating dossier and validating storage.", "Run started", 3)
-            llm = LLMClient(keys)
+            llm = LLMClient(keys, log=AgentLog(self.dossier, keys.values()))
             atomic_write_json(
                 self.dossier / "settings.json",
                 {**self.payload, "agent": llm.agent, "configured_api_keys": redact_keys(keys)},
