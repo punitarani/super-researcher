@@ -81,9 +81,9 @@ The app never sees or stores your ChatGPT credentials: Codex handles sign-in and
 | Storage root | `SUPERRESEARCHER_STORAGE_ROOT` | `<repo>/research_runs` |
 | Agent | Top-bar agent picker (saved to `<storage root>/app-settings.json`) or `SUPERRESEARCHER_AGENT=codex\|gemini` (overrides the picker) | Codex, or Gemini if only a Gemini key is set up |
 | Codex binary | `CODEX_BIN` env, else `codex` on PATH, else Codex.app bundle | auto-detected |
-| Host / port | `--host`, `--port` flags | `127.0.0.1:8765` |
+| Host / port | `--host`, `--port` flags. Starting runs and jobs or changing settings only works from this computer, whatever the host. | `127.0.0.1:8765` |
 
-**Providers.** The selected agent (Codex at high reasoning effort, or Gemini via `GEMINI_API_KEY`/`GOOGLE_API_KEY`) handles LLM work; if it isn't set up, research runs use built-in planning defaults, and topic discovery and compiling explain what to fix. Search/fetch adapters use Exa, Serper, SerpAPI, and Firecrawl when keys are present. Everything degrades gracefully without keys.
+**Providers.** The selected agent (Codex at high reasoning effort, or Gemini via `GEMINI_API_KEY`/`GOOGLE_API_KEY`) handles LLM work; if it isn't set up, research runs use built-in planning defaults, and topic discovery and compiling explain what to fix. Search/fetch adapters use Exa, Serper, SerpAPI, and Firecrawl when keys are present; if a provider rejects its key or runs out of credits, the run log names it, and a run whose searches all fail stops with that error. Everything degrades gracefully without keys.
 
 **Depth presets** (final source targets): low 3 · medium 7 · high 10 · extra-high 15 · ludicrous 50. Default final-source target 120, max 500.
 

@@ -140,10 +140,10 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"error": "Not found"}, status=404)
 
     def do_POST(self) -> None:
+        if not self.is_local_json_request():
+            return self.refuse_remote_change()
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == "/api/agents/codex/login":
-            if not self.is_local_json_request():
-                return self.send_json({"error": "Sign-in can only be started from the app on this computer."}, status=403)
             try:
                 return self.send_json({"url": codex.start_login()}, status=202)
             except codex.CodexError as exc:
@@ -265,10 +265,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": str(exc)}, status=400)
 
     def do_PUT(self) -> None:
+        if not self.is_local_json_request():
+            return self.refuse_remote_change()
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == "/api/agents":
-            if not self.is_local_json_request():
-                return self.send_json({"error": "Agent settings can only be changed from the app on this computer."}, status=403)
             try:
                 agent = self.read_json().get("selected")
             except (ValueError, AttributeError):
@@ -300,6 +300,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "Not found"}, status=404)
         except Exception as exc:
             return self.send_json({"error": str(exc)}, status=400)
+
+    def refuse_remote_change(self) -> None:
+        # Starting runs and jobs spends the user's agent quota and writes files, so only this app may do it.
+        return self.send_json({"error": "Changes can only be made from the app on this computer."}, status=403)
 
     def is_local_json_request(self) -> bool:
         # Loopback-only, and JSON-only so other websites can't trigger it with a plain form post.
