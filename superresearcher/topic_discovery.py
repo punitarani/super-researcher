@@ -14,7 +14,7 @@ from typing import Any
 
 from . import atlas
 from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text, load_api_keys
-from .llm import LLMClient
+from .llm import LLMClient, require_ready_agent
 
 
 GENERIC_LABELS = {
@@ -150,6 +150,7 @@ def start_topic_discovery_job(corpus_id_or_path: str, force: bool = False) -> To
         snap = job.snapshot()
         if snap["corpus_path"] == str(corpus) and snap["state"] in {"queued", "running"}:
             return job
+    require_ready_agent()
     job = TopicDiscoveryJob(corpus, force=force)
     job.start()
     return job
@@ -528,7 +529,7 @@ def run_topic_discovery(
         result["summary"]["llm_status"] = "failed"
         result["summary"]["llm_error"] = str(exc)
         write_topic_outputs(corpus_path, result)
-        raise RuntimeError(f"Topic synthesis LLM call failed. Mined and deduped artifacts were written to {corpus_path / 'atlas' / 'topics'}.") from exc
+        raise RuntimeError(f"Topic synthesis failed: {exc} Mined and deduped artifacts were written to {corpus_path / 'atlas' / 'topics'}.") from exc
 
     result["summary"]["llm_status"] = "success"
     result["topic_tree_markdown"] = topic_tree

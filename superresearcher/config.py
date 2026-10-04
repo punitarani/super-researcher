@@ -20,6 +20,8 @@ _keys_env = os.environ.get("SUPERRESEARCHER_API_KEYS")
 API_KEYS_FILE = Path(_keys_env).expanduser() if _keys_env else ROOT / "api_keys.txt"
 del _keys_env
 
+APP_SETTINGS_FILE = DEFAULT_STORAGE_ROOT / "app-settings.json"
+
 _LEGACY_CODEX_BIN = Path("/Applications/Codex.app/Contents/Resources/codex")
 
 
@@ -101,6 +103,19 @@ def load_api_keys(path: Path = API_KEYS_FILE) -> dict[str, str]:
 
 def redact_keys(keys: dict[str, str]) -> dict[str, str]:
     return {k: "<configured>" for k, v in keys.items() if v}
+
+
+def load_app_settings() -> dict[str, Any]:
+    try:
+        settings = json.loads(APP_SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def save_app_settings(settings: dict[str, Any]) -> None:
+    APP_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(APP_SETTINGS_FILE, settings)
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:

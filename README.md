@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)]()
 
 **SuperResearcher is a local-first research harness.** Give it a topic and it runs the research end to end: planning the protocol, discovering and downloading real sources, building a durable corpus with readable sidecars, mapping it in an embedding Atlas, and compiling a publishable, consulting-grade report. It reports progress every 5 minutes and gives honest quality verdicts — Pass, Pass with warnings, or Fail.
 
@@ -45,7 +45,11 @@ Requires Python 3.10+ and Node 18+ (only for building the Atlas frontend bundle)
 git clone https://github.com/kumar-vis/super-researcher.git
 cd super-researcher
 
-# Optional: search + LLM providers (app works without keys, with fallbacks)
+# Recommended: AI agent on your ChatGPT plan (no API key needed)
+npm install -g @openai/codex            # or: brew install --cask codex
+codex login                             # sign in with your ChatGPT account
+
+# Optional: search providers and Gemini (app works without keys, with fallbacks)
 cp api_keys.example.txt api_keys.txt   # then fill in your keys
 
 # Optional: Atlas embeddings + better PDF extraction
@@ -60,16 +64,26 @@ python3 run_app.py
 
 Or install the CLI: `pip install .` then run `superresearcher` (UI assets ship inside the package).
 
+### Agent: Codex on your ChatGPT plan
+
+The agent writes research plans, topic trees, and report sections. Pick it from the chip in the top bar:
+
+- **Codex · ChatGPT plan** (default): runs the [Codex CLI](https://github.com/openai/codex) you installed, signed in with your ChatGPT account (Plus, Pro, Business, Edu, or Enterprise). Usage counts against your plan's Codex limits. The app checks that Codex is installed (0.122 or newer) and signed in with ChatGPT, and shows how to fix it if not. **Sign in with ChatGPT** in the agent panel runs `codex login` for you; on a machine without a browser, run `codex login --device-auth`.
+- **Gemini · API key**: uses `GEMINI_API_KEY` from `api_keys.txt`.
+
+The app never sees or stores your ChatGPT credentials: Codex handles sign-in and keeps its own tokens. Each prompt runs in a throwaway, read-only Codex session with tools, web search, and your personal Codex config turned off, and without `CODEX_API_KEY`/`OPENAI_API_KEY` in its environment, so it always uses your ChatGPT plan rather than an API account. The selected agent never silently falls back to another provider. Codex picks the best model for your plan; set `CODEX_MODEL` in `api_keys.txt` to override it.
+
 ### Configuration
 
 | Setting | Where | Default |
 |---|---|---|
 | API keys | `api_keys.txt` (git-ignored) or `SUPERRESEARCHER_API_KEYS` | — |
 | Storage root | `SUPERRESEARCHER_STORAGE_ROOT` | `<repo>/research_runs` |
+| Agent | Top-bar agent picker (saved to `<storage root>/app-settings.json`) or `SUPERRESEARCHER_AGENT=codex\|gemini` (overrides the picker) | Codex, or Gemini if only a Gemini key is set up |
 | Codex binary | `CODEX_BIN` env, else `codex` on PATH, else Codex.app bundle | auto-detected |
 | Host / port | `--host`, `--port` flags | `127.0.0.1:8765` |
 
-**Providers.** LLM planning tries the local Codex CLI first (high reasoning effort), then Gemini (`GEMINI_API_KEY` or `GOOGLE_API_KEY`). Search/fetch adapters use Exa, Serper, SerpAPI, and Firecrawl when keys are present. Everything degrades gracefully without keys.
+**Providers.** The selected agent (Codex at high reasoning effort, or Gemini via `GEMINI_API_KEY`/`GOOGLE_API_KEY`) handles LLM work; if it isn't set up, research runs use built-in planning defaults, and topic discovery and compiling explain what to fix. Search/fetch adapters use Exa, Serper, SerpAPI, and Firecrawl when keys are present. Everything degrades gracefully without keys.
 
 **Depth presets** (final source targets): low 3 · medium 7 · high 10 · extra-high 15 · ludicrous 50. Default final-source target 120, max 500.
 
@@ -84,11 +98,12 @@ superresearcher/        Python package (stdlib-only core)
   atlas.py              Embeddings, projection, curation jobs
   topic_discovery.py    TOC/heading mining
   publish.py / reporting.py   Report + paper compilation
-  llm.py / prompts.py / config.py
+  llm.py / codex.py      Agent selection; Codex CLI on your ChatGPT plan
+  prompts.py / config.py
 superresearcher/web/       Vanilla-JS UI (index.html, app.js, styles.css)
 superresearcher/web/atlas-src/  Atlas frontend source (vite → web/atlas/)
 outputs/                Published example reports (PDF)
-tests/                  80 unit tests
+tests/                  91 unit tests
 docs/                   Product requirements + original build plans
 ```
 

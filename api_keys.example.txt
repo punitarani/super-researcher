@@ -10,7 +10,11 @@ EXA_API_KEY=
 SERPER_API_KEY=
 FIRECRAWL_API_KEY=
 
-# LLM planning (Codex CLI is tried first when installed; Gemini is the fallback)
+# Agent: pick Codex or Gemini from the top bar in the app.
+# Codex needs no key here: install the Codex CLI and run `codex login` to use your ChatGPT plan.
+# CODEX_MODEL=           # optional; by default Codex picks the best model for your plan
+
+# Gemini agent
 GEMINI_API_KEY=
 # GOOGLE_API_KEY=        # accepted as an alias for GEMINI_API_KEY
 # GEMINI_MODEL=gemini-2.0-flash

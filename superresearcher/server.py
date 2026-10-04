@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import urllib.parse
@@ -8,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, redact_keys
+from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, load_app_settings, redact_keys, save_app_settings
 from .runner import RUNS, ResearchRun
-from . import atlas, postprocess, publish, query_bundles, reporting, topic_discovery
+from . import atlas, codex, llm, postprocess, publish, query_bundles, reporting, topic_discovery
 
 
 def _web_dir() -> Path:
@@ -47,6 +48,9 @@ class Handler(BaseHTTPRequestHandler):
                     "configured_api_keys": redact_keys(keys),
                 }
             )
+        if path == "/api/agents":
+            refresh = urllib.parse.parse_qs(parsed.query).get("refresh") == ["1"]
+            return self.send_json(llm.agents_payload(refresh=refresh))
         if path == "/api/runs":
             return self.send_json([run.snapshot() for run in RUNS.values()])
         if path.startswith("/api/runs/"):
@@ -127,6 +131,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/agents/codex/login":
+            if not self.is_local_json_request():
+                return self.send_json({"error": "Sign-in can only be started from the app on this computer."}, status=403)
+            try:
+                return self.send_json({"url": codex.start_login()}, status=202)
+            except codex.CodexError as exc:
+                return self.send_json({"error": str(exc)}, status=400)
         if parsed.path == "/api/atlas/build":
             try:
                 payload = self.read_json()
@@ -245,6 +256,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/agents":
+            if not self.is_local_json_request():
+                return self.send_json({"error": "Agent settings can only be changed from the app on this computer."}, status=403)
+            try:
+                agent = self.read_json().get("selected")
+            except (ValueError, AttributeError):
+                agent = None
+            if agent not in llm.AGENTS:
+                return self.send_json({"error": f"Unknown agent: {agent}"}, status=400)
+            save_app_settings({**load_app_settings(), "agent": agent})
+            return self.send_json(llm.agents_payload())
         atlas_route = parse_atlas_route(parsed.path)
         if not atlas_route:
             return self.send_json({"error": "Not found"}, status=404)
@@ -262,6 +284,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "Not found"}, status=404)
         except Exception as exc:
             return self.send_json({"error": str(exc)}, status=400)
+
+    def is_local_json_request(self) -> bool:
+        # Loopback-only, and JSON-only so other websites can't trigger it with a plain form post.
+        is_loopback = ipaddress.ip_address(self.client_address[0]).is_loopback
+        return is_loopback and self.headers.get("Content-Type", "").startswith("application/json")
 
     def read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))

@@ -1,5 +1,7 @@
 const state = {
   config: null,
+  agents: null,
+  agentTimer: null,
   theme: "light",
   depth: "high",
   breadth: "high",
@@ -91,6 +93,8 @@ const THEME_STORAGE_KEY = "superresearcher.theme";
 const STAGE_IDS = ["scope", "map", "curate", "compose", "publish", "pulbish"];
 const COMPOSE_REFINE_THRESHOLDS = [0.25, 0.2, 0.15, 0.1, 0.08];
 const $ = (id) => document.getElementById(id);
+const JSON_HEADERS = { "Content-Type": "application/json" };
+const SIGN_IN_STATES = new Set(["signed_out", "wrong_auth"]);
 
 async function init() {
   state.theme = storedTheme();
@@ -103,6 +107,7 @@ async function init() {
   bindCompose();
   bindPublish();
   bindPublishReport();
+  bindAgents();
   $("runForm").addEventListener("submit", onSubmit);
   $("cancelLargeRun").addEventListener("click", () => {
     $("confirmModal").hidden = true;
@@ -113,6 +118,7 @@ async function init() {
     if (state.pendingPayload) startRun(state.pendingPayload);
   });
   $("finalSourceCount").addEventListener("input", updateEstimate);
+  loadAgents().catch((error) => console.error(error));
   state.config = await fetchJson("/api/config");
   $("storageRoot").value = state.config.default_storage_root;
   updateEstimate();
@@ -182,7 +188,7 @@ function showTab(tab) {
 }
 
 function bindSegments() {
-  document.querySelectorAll(".segmented").forEach((group) => {
+  document.querySelectorAll(".segmented[data-name]").forEach((group) => {
     group.addEventListener("click", (event) => {
       const button = event.target.closest("button");
       if (!button) return;
@@ -192,6 +198,95 @@ function bindSegments() {
       updateEstimate();
     });
   });
+}
+
+function bindAgents() {
+  const modal = $("agentModal");
+  const open = () => {
+    modal.hidden = false;
+    loadAgents(true).catch(showAgentError);
+  };
+  $("agentButton").addEventListener("click", open);
+  $("agentWarning").addEventListener("click", open);
+  $("agentClose").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.hidden = true;
+  });
+  $("agentRecheck").addEventListener("click", () => loadAgents(true).catch(showAgentError));
+  $("agentSignIn").addEventListener("click", signInWithChatGPT);
+  $("agentPicker").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-agent]");
+    if (button) selectAgent(button.dataset.agent).catch(showAgentError);
+  });
+}
+
+async function loadAgents(refresh = false) {
+  state.agents = await fetchJson(`/api/agents${refresh ? "?refresh=1" : ""}`);
+  renderAgents();
+  return state.agents;
+}
+
+async function selectAgent(agentId) {
+  state.agents = await fetchJson("/api/agents", {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ selected: agentId })
+  });
+  renderAgents();
+}
+
+function renderAgents() {
+  const agent = state.agents.agents.find((item) => item.id === state.agents.selected);
+  const chip = $("agentButton");
+  chip.textContent = `${agent.label} · ${agent.ready ? "Ready" : "Set up"}`;
+  chip.classList.toggle("needs-setup", !agent.ready);
+  chip.title = agent.message;
+  $("agentPicker").querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.agent === agent.id);
+  });
+  $("agentMessage").className = `agent-message ${agent.ready ? "ready" : "needs-setup"}`;
+  $("agentMessage").innerHTML = withInlineCode(agent.message);
+  $("agentSignIn").hidden = !SIGN_IN_STATES.has(agent.state);
+  if (agent.ready) $("agentSignInHint").hidden = true;
+  $("agentWarning").hidden = agent.ready;
+  $("agentWarning").textContent = `${agent.label} isn't set up yet, so research runs will use built-in planning. Set up ${agent.label} →`;
+}
+
+async function signInWithChatGPT() {
+  const hint = $("agentSignInHint");
+  $("agentSignIn").disabled = true;
+  try {
+    const { url } = await fetchJson("/api/agents/codex/login", { method: "POST", headers: JSON_HEADERS, body: "{}" });
+    hint.innerHTML = `Finish signing in to ChatGPT in your browser. No tab opened? <a href="${escapeHtml(url)}" target="_blank" rel="noopener">Open the sign-in page</a>.`;
+    hint.hidden = false;
+    waitForSignIn(Date.now() + 5 * 60 * 1000);
+  } catch (error) {
+    showAgentError(error);
+  } finally {
+    $("agentSignIn").disabled = false;
+  }
+}
+
+function waitForSignIn(deadline) {
+  window.clearInterval(state.agentTimer);
+  state.agentTimer = window.setInterval(async () => {
+    try {
+      const codex = (await loadAgents()).agents.find((item) => item.id === "codex");
+      if (codex.ready || Date.now() > deadline) window.clearInterval(state.agentTimer);
+    } catch (error) {
+      window.clearInterval(state.agentTimer);
+      showAgentError(error);
+    }
+  }, 2000);
+}
+
+function showAgentError(error) {
+  $("agentMessage").className = "agent-message needs-setup";
+  $("agentMessage").textContent = error.message;
+}
+
+function withInlineCode(text) {
+  return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
 function updateEstimate() {
