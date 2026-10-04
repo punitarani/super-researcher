@@ -318,12 +318,15 @@ def select_sources(deduped: list[dict[str, Any]], target: int) -> list[dict[str,
     publisher_counts: dict[str, int] = defaultdict(int)
     max_per_publisher = max(3, target // 8)
     selected = []
+    skipped = []
     for item in sorted(deduped, key=lambda s: s.get("score", 0), reverse=True):
         publisher = item.get("publisher", "unknown")
         if publisher_counts[publisher] >= max_per_publisher and len(selected) < target * 0.75:
+            skipped.append(item)
             continue
         selected.append(item)
         publisher_counts[publisher] += 1
         if len(selected) >= target:
             break
-    return selected
+    # The cap only spreads picks across publishers; if too few others exist, backfill with the best skipped ones.
+    return selected + skipped[: max(0, target - len(selected))]
