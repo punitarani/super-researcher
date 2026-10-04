@@ -79,7 +79,7 @@ class RunStartTests(unittest.TestCase):
         return run
 
     def test_unreadable_api_keys_fail_the_run_instead_of_leaving_it_queued(self) -> None:
-        run = self.start(load_api_keys=lambda: (_ for _ in ()).throw(OSError("Permission denied: api_keys.txt")))
+        run = self.start(load_api_keys=lambda: (_ for _ in ()).throw(OSError("Permission denied: .env")))
         status = run.snapshot()
         self.assertEqual(status["state"], "failed")
         self.assertIn("Permission denied", status["error"])
