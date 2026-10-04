@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import mimetypes
+import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,6 +22,7 @@ def _web_dir() -> Path:
 
 
 WEB = _web_dir()
+LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "[::1]"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -301,9 +303,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": str(exc)}, status=400)
 
     def is_local_json_request(self) -> bool:
-        # Loopback-only, and JSON-only so other websites can't trigger it with a plain form post.
+        # Loopback-only, addressed to this computer by name (so a page that points its own domain
+        # at 127.0.0.1, a DNS rebinding attack, can't use it), and JSON-only so other websites
+        # can't trigger it with a plain form post.
         is_loopback = ipaddress.ip_address(self.client_address[0]).is_loopback
-        return is_loopback and self.headers.get("Content-Type", "").startswith("application/json")
+        host = re.sub(r":\d+$", "", self.headers.get("Host", "")).lower()
+        return is_loopback and host in LOCAL_HOSTNAMES and self.headers.get("Content-Type", "").startswith("application/json")
 
     def read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
