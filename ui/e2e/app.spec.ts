@@ -53,6 +53,15 @@ test("filters and the selected run live in the URL", async ({ page, request }) =
   await expect(page.getByText("No runs match these filters.")).toBeVisible()
 })
 
+test("on a phone, a run's back link returns to the list", async ({ page, request }) => {
+  const runId = await createRun(request, "Tidal energy in estuaries")
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(`/?run=${runId}`)
+  await page.getByRole("link", { name: "All runs" }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole("complementary", { name: "Runs" })).toBeVisible()
+})
+
 test("pipeline jobs stream progress and show the backend's curation message", async ({ page, request }) => {
   const runId = await createRun(request, "Solid-state batteries")
   await expect.poll(async () => (await (await request.get(`${API_URL}/api/runs/${runId}`)).json()).state).toBe("completed")
