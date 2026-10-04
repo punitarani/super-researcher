@@ -220,6 +220,25 @@ class TopicDiscoveryTests(unittest.TestCase):
             self.assertFalse((out / "topic_tree.md").exists())
             self.assertIn("LLM status: failed", (out / "topic_discovery_summary.md").read_text(encoding="utf-8"))
 
+    def test_flat_pdf_text_fails_with_next_steps_before_asking_the_agent(self) -> None:
+        # Every chunk sits under ingest's own "Extracted PDF Text" label, so there's nothing to build topics from.
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = Path(tmp) / "flat_Corpus"
+            write_jsonl(
+                corpus / "atlas" / "chunks.jsonl",
+                [chunk(f"c{i}", "plain text", f"s{i}", f"Paper {i}", "P", "Extracted PDF Text") for i in range(5)],
+            )
+            write_jsonl(corpus / "atlas" / "selections.jsonl", [])
+            llm = FakeLLM()
+
+            with self.assertRaises(RuntimeError) as raised:
+                topic_discovery.run_topic_discovery(corpus=str(corpus), llm=llm)
+
+            self.assertEqual(llm.prompts, [])  # no agent call wasted on an empty outline
+            self.assertIn("Post-process", str(raised.exception))
+            deduped = json.loads((corpus / "atlas" / "topics" / "deduped_subtopics.json").read_text(encoding="utf-8"))
+            self.assertNotIn("Extracted PDF Text", [row["label"] for row in deduped])
+
     def test_parse_topic_tree_markdown_defaults_selected_and_assigns_ids(self) -> None:
         tree = topic_discovery.parse_topic_tree_markdown(
             """

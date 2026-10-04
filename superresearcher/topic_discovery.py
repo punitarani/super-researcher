@@ -18,6 +18,7 @@ from .llm import LLMClient, require_ready_agent
 
 
 GENERIC_LABELS = {
+    "extracted text",  # "Extracted PDF Text": ingest's own label for plain PDF text, not a document heading
     "abstract",
     "acknowledgment",
     "acknowledgments",
@@ -518,6 +519,12 @@ def run_topic_discovery(
     if progress:
         progress("Writing mined topic artifacts", 68)
     write_topic_outputs(corpus_path, result)
+    if not deduped:
+        raise RuntimeError(
+            "No section headings or table-of-contents entries were found in this corpus, so there's nothing to build "
+            "topics from. Its PDFs were saved as plain text: run Post-process to rebuild their Markdown with headings "
+            "(it needs the PDF extras from requirements-atlas.txt), then Build Atlas and Discover topics again."
+        )
 
     llm = llm or LLMClient(load_api_keys())
     try:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from superresearcher import postprocess
 
@@ -75,6 +76,42 @@ class MarkdownReadabilityPostprocessTests(unittest.TestCase):
         self.assertEqual(result["reflowed"], 1)
         self.assertIn("postprocess_newline_reflowed", result["row"]["conversion_notes"])
 
+
+    def flat_pdf_row(self, corpus: Path) -> dict:
+        # What ingest writes with pdftotext: readable text, but no headings of the document's own.
+        original = corpus / "originals" / "0001-paper.pdf"
+        original.parent.mkdir()
+        original.write_bytes(b"%PDF-1.7\n%fake\n")
+        md = corpus / "markdown" / "0001-paper.md"
+        md.parent.mkdir()
+        prose = "Retrieval augmented generation systems are evaluated with faithfulness and relevance metrics. " * 40
+        md.write_text("# Paper\n\n- Source type: academic\n\n---\n## Extracted PDF Text\n\n" + prose, encoding="utf-8")
+        return {"source_type": "academic", "url": "https://arxiv.org/pdf/2401.00001", "local_path": str(original), "markdown_path": str(md)}
+
+    def test_flat_pdf_text_is_rebuilt_with_the_documents_headings(self) -> None:
+        structured = "# Paper\n\n## Abstract\n\n" + "Faithfulness and relevance metrics. " * 40 + "\n\n## 1 Introduction\n\n" + "RAG evaluation. " * 60
+        with tempfile.TemporaryDirectory() as tmp, patch.object(postprocess, "pdf_via_pymupdf4llm", return_value=structured):
+            corpus = Path(tmp)
+            row = self.flat_pdf_row(corpus)
+            result = postprocess.postprocess_markdown_row(corpus, row)
+            rewritten = Path(row["markdown_path"]).read_text(encoding="utf-8")
+
+        self.assertEqual((result["flagged"], result["reconverted"]), (1, 1))
+        self.assertIn("## 1 Introduction", rewritten)
+        self.assertTrue(rewritten.startswith("# Paper\n\n- Source type: academic"))  # source header kept
+
+    def test_flat_pdf_text_is_left_alone_when_no_converter_adds_headings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(postprocess, "pdf_via_pymupdf4llm", side_effect=ImportError("pymupdf4llm")), patch.object(
+            postprocess, "pdf_via_pymupdf", return_value="Plain text only. " * 80
+        ):
+            corpus = Path(tmp)
+            row = self.flat_pdf_row(corpus)
+            before = Path(row["markdown_path"]).read_text(encoding="utf-8")
+            result = postprocess.postprocess_markdown_row(corpus, row)
+            after = Path(row["markdown_path"]).read_text(encoding="utf-8")
+
+        self.assertEqual((result["reconverted"], result["failed"], result["unchanged"]), (0, 0, 1))
+        self.assertEqual(before, after)
 
 if __name__ == "__main__":
     unittest.main()
