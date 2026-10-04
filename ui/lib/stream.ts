@@ -49,7 +49,13 @@ export function snapshotStream<T extends { state: string }>(load: () => Promise<
 
 function sleep(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true })
+    // Remove the abort listener on every wake-up, or a long stream piles up one per tick.
+    const wake = () => {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", wake)
+      resolve()
+    }
+    const timer = setTimeout(wake, ms)
+    signal.addEventListener("abort", wake, { once: true })
   })
 }

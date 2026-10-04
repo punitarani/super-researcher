@@ -1,5 +1,6 @@
 // URL state for the runs page, shared by server pages and client hooks.
 import { createLoader, createSerializer, parseAsArrayOf, parseAsString, parseAsStringLiteral } from "nuqs/server"
+import { ACTIVE_STATES } from "./schemas"
 
 export const RUN_FILTERS = ["all", "active", "completed", "failed", "stopped"] as const
 export type RunFilter = (typeof RUN_FILTERS)[number]
@@ -20,7 +21,7 @@ export const runsHref = createSerializer(runsParams)
 
 const FILTER_STATES: Record<RunFilter, readonly string[] | null> = {
   all: null,
-  active: ["queued", "running"],
+  active: ACTIVE_STATES,
   completed: ["completed"],
   failed: ["failed"],
   stopped: ["stopped", "interrupted"],

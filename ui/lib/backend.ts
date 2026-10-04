@@ -9,8 +9,8 @@ import {
   jobSchema,
   loginSchema,
   pipelineStatusSchema as S,
+  runListSchema,
   runSchema,
-  runSummarySchema,
   type JobKind,
   type NewRun,
 } from "./schemas"
@@ -76,7 +76,7 @@ export const api = {
   selectAgent: (selected: string) => call("/api/agents", agentsSchema, { selected }, "PUT"),
   startCodexLogin: () => call("/api/agents/codex/login", loginSchema, {}),
 
-  runs: () => call("/api/runs", z.array(runSummarySchema)),
+  runs: () => call("/api/runs", runListSchema),
   run: (runId: string) => call(`/api/runs/${enc(runId)}`, runSchema),
   startRun: (input: NewRun) => call("/api/runs", runSchema, input),
   stopRun: (runId: string) => call(`/api/runs/${enc(runId)}/stop`, runSchema, {}),
@@ -105,7 +105,7 @@ export const api = {
       atlasDeps,
       topics: topics?.raw.exists ?? false,
       curated: topics?.curated.exists ?? false,
-      composed: compose?.generated.exists ?? false,
+      composed: compose?.generated.valid ?? false,
       finalized: compose?.finalized.exists ?? false,
       paperPath: publish?.paper.exists ? publish.paper.path : null,
     }

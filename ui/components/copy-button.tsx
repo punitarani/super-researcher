@@ -13,7 +13,11 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
       aria-label={copied ? "Copied" : label}
       title={label}
       onClick={async () => {
-        await navigator.clipboard.writeText(value)
+        try {
+          await navigator.clipboard.writeText(value)
+        } catch {
+          return // The browser refused (no permission or focus); the path is still shown to copy by hand.
+        }
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
       }}
