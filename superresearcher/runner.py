@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import atomic_write_json, atomic_write_text, ensure_storage_root, load_api_keys, redact_keys, slugify
+from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text, ensure_storage_root, load_api_keys, redact_keys, slugify
 from .ingest import ingest_sources
 from .llm import LLMClient, agent_status
 from .phase1 import build_protocol
@@ -24,6 +24,11 @@ from .search import dedupe_candidates, discover_candidates
 
 
 RUNS: dict[str, "ResearchRun"] = {}
+ACTIVE_STATES = {"queued", "running"}
+
+
+class RunStopped(Exception):
+    pass
 
 
 class ResearchRun:
@@ -51,8 +56,10 @@ class ResearchRun:
             "error": None,
             "quality": None,
             "files": {},
+            "stop_requested": False,
         }
         self._lock = threading.Lock()
+        self._stop = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
@@ -63,6 +70,24 @@ class ResearchRun:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return json.loads(json.dumps(self.status))
+
+    def stop(self) -> bool:
+        """Ask the run to stop at its next step. Returns False if it already finished."""
+        with self._lock:
+            if self.status["state"] not in ACTIVE_STATES:
+                return False
+            if self._stop.is_set():
+                return True
+            self.status["stop_requested"] = True
+            self._stop.set()
+        self.event("Stop requested. Stopping after the current step.")
+        return True
+
+    def _step(self, message: str, milestone: str, progress: int, **counts: Any) -> None:
+        """Record a milestone, unless the user asked the run to stop."""
+        if self._stop.is_set():
+            raise RunStopped
+        self.event(message, milestone, progress, **counts)
 
     def event(self, message: str, milestone: str | None = None, progress: int | None = None, **counts: Any) -> None:
         with self._lock:
@@ -79,7 +104,7 @@ class ResearchRun:
         while True:
             time.sleep(300)
             snapshot = self.snapshot()
-            if snapshot["state"] in {"completed", "failed"}:
+            if snapshot["state"] not in ACTIVE_STATES:
                 return
             counts = snapshot.get("counts", {})
             message = "Still working."
@@ -104,18 +129,18 @@ class ResearchRun:
                 llm.unavailable = agent["message"]
                 self.event(f"{agent['label']} isn't ready, so planning uses built-in defaults. {agent['message']}")
 
-            self.event("Dossier created. Building the research protocol.", "Dossier created", 8)
+            self._step("Dossier created. Building the research protocol.", "Dossier created", 8)
             protocol = build_protocol(self.payload, llm)
             atomic_write_json(self.dossier / "research_protocol.json", protocol)
             self._file("research_protocol", self.dossier / "research_protocol.json")
 
-            self.event("Research protocol created. Generating search heuristics.", "Research plan created", 18)
+            self._step("Research protocol created. Generating search heuristics.", "Research plan created", 18)
             heuristics = generate_heuristics(protocol, llm, self.dossier / "search_heuristics.json")
             self._file("search_heuristics", self.dossier / "search_heuristics.json")
 
             plan = create_search_batches(protocol, heuristics, self.dossier / "parallel-search-batches.json")
             self._file("parallel_search_batches", self.dossier / "parallel-search-batches.json")
-            self.event(
+            self._step(
                 "Search plan created. Starting candidate discovery.",
                 "Candidate source discovery started",
                 28,
@@ -124,10 +149,12 @@ class ResearchRun:
             )
 
             max_batches = self.payload.get("max_batches")
-            candidates = discover_candidates(plan, keys, progress=lambda msg: self.event(msg), max_batches=max_batches)
+            candidates = discover_candidates(
+                plan, keys, progress=lambda msg: self.event(msg), max_batches=max_batches, should_stop=self._stop.is_set
+            )
             write_jsonl(self.dossier / "candidate_sources.jsonl", candidates)
             self._file("candidate_sources", self.dossier / "candidate_sources.jsonl")
-            self.event(
+            self._step(
                 f"Discovery complete: {len(candidates)} candidate discoveries found. Deduping and ranking.",
                 "Candidate source discovery completed",
                 48,
@@ -142,7 +169,7 @@ class ResearchRun:
             selected = select_sources(deduped, target)
             write_jsonl(self.dossier / "selected_sources.jsonl", selected)
             self._file("selected_sources", self.dossier / "selected_sources.jsonl")
-            self.event(
+            self._step(
                 f"Source ranking complete: {len(deduped)} deduped candidates, {len(selected)} selected for ingestion.",
                 "Source ranking and selection completed",
                 58,
@@ -150,10 +177,10 @@ class ResearchRun:
                 selected_sources=len(selected),
             )
 
-            ingested = ingest_sources(selected, self.dossier, keys, progress=lambda msg: self.event(msg))
+            ingested = ingest_sources(selected, self.dossier, keys, progress=lambda msg: self.event(msg), should_stop=self._stop.is_set)
             write_jsonl(self.dossier / "ingested_sources.jsonl", ingested)
             self._file("ingested_sources", self.dossier / "ingested_sources.jsonl")
-            self.event(
+            self._step(
                 "Source ingestion finished. Building corpus index and quality report.",
                 "Source ingestion completed",
                 82,
@@ -165,7 +192,7 @@ class ResearchRun:
             quality = write_quality_report(self.dossier / "quality-report.md", protocol, ingested, deduped)
             self._file("quality_report", self.dossier / "quality-report.md")
             self.status["quality"] = quality
-            self.event(
+            self._step(
                 f"Quality check complete: {quality['verdict']}.",
                 "Corpus quality check completed",
                 94,
@@ -179,6 +206,11 @@ class ResearchRun:
                 self.status["state"] = "completed"
                 self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
             self.event("Run completed.", "Run completed", 100)
+        except RunStopped:
+            with self._lock:
+                self.status["state"] = "stopped"
+                self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
+            self.event("Run stopped.", "Run stopped")
         except Exception as exc:
             trace = traceback.format_exc()
             atomic_write_text(self.dossier / "logs" / "error.log", trace)
@@ -191,6 +223,37 @@ class ResearchRun:
     def _file(self, key: str, path: Path) -> None:
         with self._lock:
             self.status["files"][key] = str(path)
+
+
+def get_run(run_id: str, root: Path = DEFAULT_STORAGE_ROOT) -> dict[str, Any] | None:
+    """A run's status: live if it runs in this process, else as last saved in its folder."""
+    run = RUNS.get(run_id)
+    if run:
+        return run.snapshot()
+    if not run_id.endswith("_Corpus") or Path(run_id).name != run_id:
+        return None
+    return _saved_run(root / run_id / "run.json")
+
+
+def list_runs(root: Path = DEFAULT_STORAGE_ROOT) -> list[dict[str, Any]]:
+    """Every run, newest first: this process's live runs plus the ones saved under the storage root."""
+    live = {run_id: run.snapshot() for run_id, run in RUNS.items()}
+    saved = (_saved_run(path) for path in root.glob("*_Corpus/run.json")) if root.exists() else ()
+    runs = {**{run["run_id"]: run for run in saved if run}, **live}
+    rows = [{k: v for k, v in run.items() if k not in ("events", "files")} for run in runs.values()]
+    return sorted(rows, key=lambda run: run["run_id"], reverse=True)
+
+
+def _saved_run(path: Path) -> dict[str, Any] | None:
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(status, dict) or status.get("run_id") != path.parent.name:
+        return None
+    if status.get("state") in ACTIVE_STATES:
+        status["state"] = "interrupted"  # the app stopped while this run was going
+    return status
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:

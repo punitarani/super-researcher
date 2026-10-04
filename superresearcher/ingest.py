@@ -20,7 +20,7 @@ from .search import content_hash, infer_source_type
 DATA_EXTS = {".csv", ".tsv", ".xlsx", ".xls", ".json", ".zip", ".parquet", ".sav", ".dta"}
 
 
-def ingest_sources(sources: list[dict[str, Any]], dossier: Path, keys: dict[str, str], progress=None) -> list[dict[str, Any]]:
+def ingest_sources(sources: list[dict[str, Any]], dossier: Path, keys: dict[str, str], progress=None, should_stop=None) -> list[dict[str, Any]]:
     originals = dossier / "originals"
     markdown = dossier / "markdown"
     assets = dossier / "assets"
@@ -29,6 +29,8 @@ def ingest_sources(sources: list[dict[str, Any]], dossier: Path, keys: dict[str,
         path.mkdir(parents=True, exist_ok=True)
     ingested = []
     for idx, source in enumerate(sources, start=1):
+        if should_stop and should_stop():
+            break
         if progress and (idx == 1 or idx % 10 == 0):
             progress(f"Ingestion running: {idx}/{len(sources)} sources processed.")
         row = dict(source)
