@@ -15,6 +15,7 @@ superresearcher/web/atlas/*.local.*
 # --- SuperResearcher runtime data ---
 research_runs/
 .models/
+# keys file from before .env
 api_keys.txt
 *.log
 

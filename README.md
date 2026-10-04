@@ -50,7 +50,7 @@ npm install -g @openai/codex            # or: brew install --cask codex
 codex login                             # sign in with your ChatGPT account
 
 # Optional: search providers and Gemini (app works without keys, with fallbacks)
-cp api_keys.example.txt api_keys.txt   # then fill in your keys
+cp .env.example .env                   # then fill in your keys
 
 # Optional: Atlas embeddings + better PDF extraction
 python3 -m venv .venv && . .venv/bin/activate
@@ -69,15 +69,15 @@ Or install the CLI: `pip install .` then run `superresearcher` (UI assets ship i
 The agent writes research plans, topic trees, and report sections. Pick it from the chip in the top bar:
 
 - **Codex · ChatGPT plan** (default): runs the [Codex CLI](https://github.com/openai/codex) you installed, signed in with your ChatGPT account (Plus, Pro, Business, Edu, or Enterprise). Usage counts against your plan's Codex limits. The app checks that Codex is installed (0.122 or newer) and signed in with ChatGPT, and shows how to fix it if not. **Sign in with ChatGPT** in the agent panel runs `codex login` for you; on a machine without a browser, run `codex login --device-auth`.
-- **Gemini · API key**: uses `GEMINI_API_KEY` from `api_keys.txt`.
+- **Gemini · API key**: uses `GEMINI_API_KEY` from `.env`.
 
-The app never sees or stores your ChatGPT credentials: Codex handles sign-in and keeps its own tokens. Each prompt runs in a throwaway, read-only Codex session with tools, web search, and your personal Codex config turned off, and without `CODEX_API_KEY`/`OPENAI_API_KEY` in its environment, so it always uses your ChatGPT plan rather than an API account. The selected agent never silently falls back to another provider. Codex picks the best model for your plan; set `CODEX_MODEL` in `api_keys.txt` to override it.
+The app never sees or stores your ChatGPT credentials: Codex handles sign-in and keeps its own tokens. Each prompt runs in a throwaway, read-only Codex session with tools, web search, and your personal Codex config turned off, and without `CODEX_API_KEY`/`OPENAI_API_KEY` in its environment, so it always uses your ChatGPT plan rather than an API account. The selected agent never silently falls back to another provider. Codex picks the best model for your plan; set `CODEX_MODEL` in `.env` to override it.
 
 ### Configuration
 
 | Setting | Where | Default |
 |---|---|---|
-| API keys | `api_keys.txt` (git-ignored) or `SUPERRESEARCHER_API_KEYS` | — |
+| API keys | `.env` (git-ignored; copy `.env.example`), or `SUPERRESEARCHER_API_KEYS` to use another file. A leftover `api_keys.txt` from older versions is still read, and `.env` wins. | — |
 | Storage root | `SUPERRESEARCHER_STORAGE_ROOT` | `<repo>/research_runs` |
 | Agent | Top-bar agent picker (saved to `<storage root>/app-settings.json`) or `SUPERRESEARCHER_AGENT=codex\|gemini` (overrides the picker) | Codex, or Gemini if only a Gemini key is set up |
 | Codex binary | `CODEX_BIN` env, else `codex` on PATH, else Codex.app bundle | auto-detected |
