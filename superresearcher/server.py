@@ -195,6 +195,7 @@ class Handler(BaseHTTPRequestHandler):
                 corpus_id = payload.get("corpus_path") or payload.get("corpus_id")
                 if not corpus_id:
                     return self.send_json({"error": "corpus_path or corpus_id is required"}, status=400)
+                llm.require_ready_agent()  # the plan is the agent's job; don't save the built-in fallback in its place
                 result = publish.create_publish_plan(str(corpus_id), custom_prompts=payload.get("custom_prompts") or None)
                 return self.send_json(result, status=201)
             except Exception as exc:
@@ -273,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
                 agent = self.read_json().get("selected")
             except (ValueError, AttributeError):
                 agent = None
-            if agent not in llm.AGENTS:
+            if not isinstance(agent, str) or agent not in llm.AGENTS:
                 return self.send_json({"error": f"Unknown agent: {agent}"}, status=400)
             override = llm.agent_override()
             if override and override != agent:

@@ -3,15 +3,22 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 from . import codex
 from .config import codex_bin, load_api_keys, load_app_settings
 
 
 class LLMError(RuntimeError):
-    pass
+    def __init__(self, message: str, fatal: bool = False) -> None:
+        super().__init__(message)
+        self.fatal = fatal  # every later prompt would fail the same way (bad key, unknown model)
+
+
+# Google's alias for its current Flash model, so the default doesn't go stale (gemini-2.0-flash was shut down).
+GEMINI_DEFAULT_MODEL = "gemini-flash-latest"
 
 
 def extract_json(text: str) -> Any:
@@ -91,11 +98,15 @@ class LLMClient:
         self.agent = agent or selected_agent(keys)
         # Set after a failure every later call would repeat (signed out, usage limit), so jobs fail fast.
         self.unavailable: str | None = None
+        # Told why, whenever a JSON prompt fails and the caller's built-in default is used instead.
+        self.on_fallback: Callable[[str], None] | None = None
 
     def json_call(self, prompt: str, fallback: Any) -> Any:
         try:
             return extract_json(self._complete(prompt, json_mode=True))
-        except Exception:
+        except Exception as exc:
+            if self.on_fallback:
+                self.on_fallback(str(exc))
             return fallback
 
     def text_call(self, prompt: str) -> str:
@@ -105,7 +116,12 @@ class LLMClient:
         if self.unavailable:
             raise LLMError(self.unavailable)
         if self.agent == "gemini":
-            return gemini_call(self.keys, prompt, json_mode)
+            try:
+                return gemini_call(self.keys, prompt, json_mode)
+            except LLMError as exc:
+                if exc.fatal:
+                    self.unavailable = str(exc)
+                raise
         try:
             return codex.complete(prompt, model=self.keys.get("CODEX_MODEL"))
         except codex.CodexError as exc:
@@ -122,26 +138,39 @@ def gemini_call(keys: dict[str, str], prompt: str, json_mode: bool) -> str:
     key = gemini_key(keys)
     if not key:
         raise LLMError("Gemini key not configured")
-    model = keys.get("GEMINI_MODEL", "gemini-2.0-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    model = keys.get("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(model, safe='')}:generateContent"
     generation_config = {"temperature": 0.7, "responseMimeType": "application/json"} if json_mode else {"temperature": 0.2}
     payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": generation_config}
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        # The key goes in a header, not the URL, so it can't end up in logs or error messages.
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        detail = gemini_error_detail(exc)
+        # A bad key or model fails every prompt the same way; other errors (e.g. one oversized prompt) may not.
+        fatal = exc.code in (401, 403, 404) or "api key" in detail.lower()
+        raise LLMError(f"Gemini rejected the request (HTTP {exc.code}): {detail}", fatal=fatal) from exc
     except urllib.error.URLError as exc:
-        raise LLMError(str(exc)) from exc
+        raise LLMError(f"Couldn't reach Gemini: {exc.reason}") from exc
     parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
     text = "".join(part.get("text", "") for part in parts)
     if not text:
         raise LLMError("empty Gemini response")
     return text
+
+
+def gemini_error_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        return str(json.loads(exc.read().decode("utf-8", errors="replace"))["error"]["message"])
+    except Exception:
+        return str(exc.reason)
 
 
 def strip_markdown_fence(text: str) -> str:
