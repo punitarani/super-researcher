@@ -133,6 +133,7 @@ function StopButton({ runId, stopRequested }: { runId: string; stopRequested: bo
         variant="outline"
         size="sm"
         disabled={stopping}
+        className={stopping ? "text-muted-foreground disabled:opacity-100" : undefined}
         onClick={() =>
           startTransition(async () => {
             const result = await stopRun(runId)
