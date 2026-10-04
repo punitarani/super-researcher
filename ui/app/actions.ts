@@ -3,8 +3,10 @@
 // cross-site calls (Origin must match Host); inputs are validated here again
 // because actions can be called directly.
 import { refresh } from "next/cache"
+import { redirect } from "next/navigation"
+import { z } from "zod"
 import { api, describeError } from "@/lib/backend"
-import { agentId } from "@/lib/schemas"
+import { agentId, newRunSchema, streamTarget, type NewRun } from "@/lib/schemas"
 
 export type ActionResult = { error: string | null }
 
@@ -34,4 +36,32 @@ export async function startCodexLogin(): Promise<ActionResult & { url: string | 
   } catch (error) {
     return { url: null, error: describeError(error) }
   }
+}
+
+export type StartRunState = {
+  error: string | null
+  fieldErrors: Partial<Record<keyof NewRun, string[]>>
+  values: Record<string, string>
+}
+
+export async function startRun(_previous: StartRunState, form: FormData): Promise<StartRunState> {
+  // Echo what was typed back, so a rejected form keeps its values.
+  const values = Object.fromEntries([...form].filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+  const input = newRunSchema.safeParse(values)
+  if (!input.success) {
+    return { error: "Some fields need attention.", fieldErrors: z.flattenError(input.error).fieldErrors, values }
+  }
+  let runId: string
+  try {
+    runId = (await api.startRun(input.data)).run_id
+  } catch (error) {
+    return { error: describeError(error), fieldErrors: {}, values }
+  }
+  redirect(`/?run=${encodeURIComponent(runId)}`)
+}
+
+export async function stopRun(runId: string): Promise<ActionResult> {
+  const id = streamTarget.shape.id.safeParse(runId)
+  if (!id.success) return { error: "Unknown run." }
+  return perform(() => api.stopRun(id.data))
 }
