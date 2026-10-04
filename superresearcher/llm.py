@@ -71,9 +71,9 @@ def agent_status(agent: str, keys: dict[str, str], refresh: bool = False) -> dic
         current = codex.status(refresh)
         state, message = current.state, current.message
     elif gemini_key(keys):
-        state, message = "ready", "Using your Gemini API key from api_keys.txt. Usage is billed to that key."
+        state, message = "ready", "Using your Gemini API key from .env. Usage is billed to that key."
     else:
-        state, message = "missing_key", "Add GEMINI_API_KEY to api_keys.txt (see api_keys.example.txt), then click Re-check."
+        state, message = "missing_key", "Add GEMINI_API_KEY to .env (see .env.example), then click Re-check."
     return {"id": agent, "label": AGENTS[agent], "state": state, "ready": state == "ready", "message": message}
 
 
