@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-93%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)]()
 
 **SuperResearcher is a local-first research harness.** Give it a topic and it runs the research end to end: planning the protocol, discovering and downloading real sources, building a durable corpus with readable sidecars, mapping it in an embedding Atlas, and compiling a publishable, consulting-grade report. It reports progress every 5 minutes and gives honest quality verdicts — Pass, Pass with warnings, or Fail.
 
@@ -39,7 +39,7 @@ Runs are written under `research_runs/<timestamp-topic>_Corpus/`. Writes are ato
 
 ## Quickstart
 
-Requires Python 3.10+ and Node 18+ (only for building the Atlas frontend bundle).
+Requires Python 3.10+. Node is only needed for the [web UI](#web-ui) (22.12+) and for building the Atlas frontend bundle (18+).
 
 ```bash
 git clone https://github.com/kumar-vis/super-researcher.git
@@ -64,9 +64,28 @@ python3 run_app.py
 
 Or install the CLI: `pip install .` then run `superresearcher` (UI assets ship inside the package).
 
+### Web UI
+
+`ui/` holds a newer web UI for running and managing agents without the CLI. From the repo root:
+
+```bash
+npm run ui
+# → http://127.0.0.1:3000   (the backend and classic UI stay on :8765)
+```
+
+That one command installs the UI's dependencies on first run, then starts the Python backend and the UI together, both bound to 127.0.0.1. Ctrl-C stops both. You don't need any API keys: Codex signs in from the Agents page. If the backend is already running (`python3 run_app.py`), start just the UI with `npm --prefix ui run dev:web`.
+
+- **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, find its files, and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
+- **New run** (`/new`): topic, depth, breadth, and scope controls. It warns you first if the agent isn't ready or no search key is set.
+- **Agents** (`/agents`): choose Codex or Gemini, see what each needs, sign in with ChatGPT, and check which search provider keys are set.
+
+**Stop** finishes the current step before stopping, so an agent call that's already running completes first. The interactive editors still live in the classic UI, which the Pipeline tab links to: the Atlas map, topic curation, term picking, figure selection, and report preview and export.
+
+Your browser only talks to the Next.js server. That server calls the Python API on 127.0.0.1 and passes along only the fields the UI uses, checked with Zod, so API keys and Codex tokens never reach the browser. The UI also refuses requests addressed to any host other than localhost.
+
 ### Agent: Codex on your ChatGPT plan
 
-The agent writes research plans, topic trees, and report sections. Pick it from the chip in the top bar:
+The agent writes research plans, topic trees, and report sections. Pick it from the chip in the top bar, or from the Agents page in the web UI:
 
 - **Codex · ChatGPT plan** (default): runs the [Codex CLI](https://github.com/openai/codex) you installed, signed in with your ChatGPT account (Plus, Pro, Business, Edu, or Enterprise). Usage counts against your plan's Codex limits. The app checks that Codex is installed (0.122 or newer) and signed in with ChatGPT, and shows how to fix it if not. **Sign in with ChatGPT** in the agent panel runs `codex login` for you; on a machine without a browser, run `codex login --device-auth`.
 - **Gemini · API key**: uses `GEMINI_API_KEY` from `api_keys.txt`.
@@ -82,6 +101,7 @@ The app never sees or stores your ChatGPT credentials: Codex handles sign-in and
 | Agent | Top-bar agent picker (saved to `<storage root>/app-settings.json`) or `SUPERRESEARCHER_AGENT=codex\|gemini` (overrides the picker) | Codex, or Gemini if only a Gemini key is set up |
 | Codex binary | `CODEX_BIN` env, else `codex` on PATH, else Codex.app bundle | auto-detected |
 | Host / port | `--host`, `--port` flags | `127.0.0.1:8765` |
+| Backend URL for the web UI | `SUPERRESEARCHER_API_URL` (must be this computer) | `http://127.0.0.1:8765` |
 
 **Providers.** The selected agent (Codex at high reasoning effort, or Gemini via `GEMINI_API_KEY`/`GOOGLE_API_KEY`) handles LLM work; if it isn't set up, research runs use built-in planning defaults, and topic discovery and compiling explain what to fix. Search/fetch adapters use Exa, Serper, SerpAPI, and Firecrawl when keys are present. Everything degrades gracefully without keys.
 
@@ -102,8 +122,9 @@ superresearcher/        Python package (stdlib-only core)
   prompts.py / config.py
 superresearcher/web/       Vanilla-JS UI (index.html, app.js, styles.css)
 superresearcher/web/atlas-src/  Atlas frontend source (vite → web/atlas/)
+ui/                     Next.js web UI: runs, agents, pipeline (`npm run ui`)
 outputs/                Published example reports (PDF)
-tests/                  93 unit tests
+tests/                  100 Python unit tests
 docs/                   Product requirements + original build plans
 ```
 
@@ -111,6 +132,13 @@ docs/                   Product requirements + original build plans
 
 ```bash
 python3 -m unittest discover -s tests
+
+# Web UI
+cd ui
+npm test                  # unit tests (vitest)
+npm run lint && npm run typecheck
+npx playwright install chromium   # once
+npm run test:e2e          # end-to-end, against a throwaway backend with no keys
 ```
 
 ## Roadmap
