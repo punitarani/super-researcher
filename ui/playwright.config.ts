@@ -23,7 +23,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "python3 ../run_app.py --host 127.0.0.1 --port 8799",
+      command: "node scripts/backend.mjs --host 127.0.0.1 --port 8799",
       url: `${API_URL}/api/config`,
       env: { SUPERRESEARCHER_STORAGE_ROOT: storage, SUPERRESEARCHER_API_KEYS: path.join(storage, "no-keys.txt"), SUPERRESEARCHER_AGENT: "gemini" },
     },
@@ -31,7 +31,8 @@ export default defineConfig({
       command: "npx next dev -H 127.0.0.1 -p 3099",
       url: `${WEB_URL}/agents`,
       timeout: 120_000,
-      env: { SUPERRESEARCHER_API_URL: API_URL },
+      // Its own build folder, so it can run while `npm run ui` is up.
+      env: { SUPERRESEARCHER_API_URL: API_URL, NEXT_DIST_DIR: ".next-e2e" },
     },
   ],
 })

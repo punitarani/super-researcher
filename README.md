@@ -138,7 +138,7 @@ cd ui
 npm test                  # unit tests (vitest)
 npm run lint && npm run typecheck
 npx playwright install chromium   # once
-npm run test:e2e          # end-to-end, against a throwaway backend with no keys
+npm run test:e2e          # end-to-end, against a throwaway backend with no keys (fine to run while `npm run ui` is up)
 ```
 
 ## Roadmap
