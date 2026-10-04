@@ -87,6 +87,30 @@ class StopRunTests(unittest.TestCase):
         with patch.object(search, "search_batch", side_effect=failing), patch.object(search.time, "sleep"):
             self.assertEqual(search.discover_candidates(plan, {"EXA_API_KEY": "x"}, should_stop=lambda: len(calls) >= 1), [])
 
+    def test_a_finished_run_never_shows_its_final_state_without_its_final_record(self) -> None:
+        run = runner.ResearchRun({**PAYLOAD, "storage_root": str(self.root)})
+        torn = []
+
+        class CheckedLock:
+            """Checks, whenever the lock is released, that a terminal state comes with its final milestone."""
+
+            def __init__(self) -> None:
+                self.inner = threading.Lock()
+
+            def __enter__(self):
+                self.inner.acquire()
+
+            def __exit__(self, *exc):
+                if run.status["state"] not in runner.ACTIVE_STATES and not run.status["milestone"].startswith("Run "):
+                    torn.append((run.status["state"], run.status["milestone"]))
+                self.inner.release()
+
+        run._lock = CheckedLock()
+        with patch.object(runner, "build_protocol", side_effect=RuntimeError("protocol failed")):
+            run._run()
+        self.assertEqual(run.snapshot()["state"], "failed")
+        self.assertEqual(torn, [])
+
 class RunHistoryTests(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
@@ -104,6 +128,7 @@ class RunHistoryTests(unittest.TestCase):
         self.save("20260101-000000-old_Corpus")
         self.save("20260301-000000-orphan_Corpus", state="running")
         self.save("20260201-000000-mismatch_Corpus", run_id="something-else_Corpus")
+        self.save("20260215-000000-odd-state_Corpus", state=[])  # hand-edited or foreign run.json
         (self.root / "20260401-000000-broken_Corpus").mkdir()
         (self.root / "20260401-000000-broken_Corpus" / "run.json").write_text("{not json", encoding="utf-8")
 

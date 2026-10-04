@@ -116,7 +116,9 @@ class ResearchRun:
             if counts:
                 compact = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in sorted(counts.items())[:4])
                 message = f"Still working. {compact}."
-            self.event(message)
+            with self._lock:
+                if self.status["state"] in ACTIVE_STATES:  # it may have finished since the snapshot
+                    self._record(message)
 
     def _run(self) -> None:
         try:
@@ -219,23 +221,22 @@ class ResearchRun:
             summary = final_summary(self.payload, protocol, candidates, deduped, ingested, quality, self.dossier)
             atomic_write_text(self.dossier / "run-summary.md", summary)
             self._file("run_summary", self.dossier / "run-summary.md")
-            with self._lock:
-                self.status["state"] = "completed"
-                self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
-            self.event("Run completed.", "Run completed", 100)
+            self._finish("completed", "Run completed.", "Run completed", 100)
         except RunStopped:
-            with self._lock:
-                self.status["state"] = "stopped"
-                self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
-            self.event("Run stopped.", "Run stopped")
+            self._finish("stopped", "Run stopped.", "Run stopped")
         except Exception as exc:
             trace = traceback.format_exc()
             atomic_write_text(self.dossier / "logs" / "error.log", trace)
-            with self._lock:
-                self.status["state"] = "failed"
-                self.status["error"] = str(exc)
-                self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
-            self.event(f"Run failed: {exc}", "Run failed", self.status.get("progress", 0))
+            self._finish("failed", f"Run failed: {exc}", "Run failed", error=str(exc))
+
+    def _finish(self, state: str, message: str, milestone: str, progress: int | None = None, error: str | None = None) -> None:
+        # One lock section, so nobody sees the final state before its final event, milestone, and run.json.
+        with self._lock:
+            self.status["state"] = state
+            self.status["completed_at"] = datetime.now().isoformat(timespec="seconds")
+            if error is not None:
+                self.status["error"] = error
+            self._record(message, milestone, progress)
 
     def _file(self, key: str, path: Path) -> None:
         with self._lock:
@@ -269,7 +270,9 @@ def _saved_run(path: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(status, dict) or status.get("run_id") != path.parent.name:
         return None
-    if status.get("state") in ACTIVE_STATES:
+    if not isinstance(status.get("state"), str):
+        return None
+    if status["state"] in ACTIVE_STATES:
         status["state"] = "interrupted"  # the app stopped while this run was going
     return status
 
