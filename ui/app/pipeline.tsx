@@ -1,13 +1,19 @@
 import { api, attempt, BACKEND_URL, type PipelineStatus } from "@/lib/backend"
 import { AGENT_STATE_LABELS } from "@/lib/labels"
-import { jobKind, streamTarget, type JobKind, type Run } from "@/lib/schemas"
+import { isActive, jobKind, streamTarget, type JobKind, type Run } from "@/lib/schemas"
 import { STAGES } from "@/lib/stages"
 import { JobCard, type StageNotes } from "./job-card"
 
 /** The corpus stages after a run: each one is a background job on the backend. */
 export async function Pipeline({ run, jobs }: { run: Run; jobs: string[] }) {
   if (run.state !== "completed") {
-    return <p className="py-6 text-sm text-muted-foreground">The pipeline opens once the run completes.</p>
+    return (
+      <p className="py-6 text-sm text-muted-foreground">
+        {isActive(run.state)
+          ? "The pipeline opens once this run completes."
+          : "Only completed runs go through the pipeline. Start a new run to build a full corpus."}
+      </p>
+    )
   }
   const watched = watchedJobs(jobs)
   const [status, agents, ...initial] = await Promise.all([
