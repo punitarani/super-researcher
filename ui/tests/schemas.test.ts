@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
-import { configSchema, newRunSchema, runListSchema, runSchema, streamTarget } from "@/lib/schemas"
+import { briefSchema, configSchema, newRunSchema, runListSchema, runSchema, streamTarget } from "@/lib/schemas"
 
 const validRun = { topic: "  Grid storage  ", depth: "high", breadth: "medium", final_source_count: "12" }
 
@@ -66,5 +66,28 @@ describe("streamTarget", () => {
     expect(streamTarget.safeParse({ kind: "run", id: "../etc/passwd" }).success).toBe(false)
     expect(streamTarget.safeParse({ kind: "shell", id: "x" }).success).toBe(false)
     for (const id of [".", ".."]) expect(streamTarget.safeParse({ kind: "run", id }).success).toBe(false)
+  })
+})
+
+describe("briefSchema", () => {
+  it("keeps the brief and the agent, and only the names of configured keys", () => {
+    const brief = briefSchema.parse({
+      topic: "Grid batteries",
+      context: "For a strategy memo",
+      depth: "low",
+      breadth: "high",
+      final_source_count: 12,
+      must_include: "LFP",
+      agent: "codex",
+      storage_root: "/Users/me/research_runs",
+      configured_api_keys: { EXA_API_KEY: "<configured>", GEMINI_API_KEY: "sk-should-never-show" },
+    })
+    expect(brief).toMatchObject({ topic: "Grid batteries", depth: "low", final_source_count: 12, must_include: "LFP", agent: "codex", keyNames: ["EXA_API_KEY", "GEMINI_API_KEY"] })
+    expect(JSON.stringify(brief)).not.toContain("sk-should-never-show")
+    expect(brief).not.toHaveProperty("storage_root")
+  })
+
+  it("tolerates missing and odd fields", () => {
+    expect(briefSchema.parse({ topic: 7, final_source_count: "many" })).toMatchObject({ topic: "", context: "", final_source_count: null, agent: null, keyNames: [] })
   })
 })

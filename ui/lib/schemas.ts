@@ -86,6 +86,29 @@ export type Job = z.infer<typeof jobSchema>
 // Run, job and corpus ids: plain names, never "." or ".." (which a URL would resolve as a path).
 export const ID_PATTERN = /^(?!\.\.?$)[\w.-]{1,200}$/
 
+// A run's brief, from its settings.json. Only the names of configured keys are kept, never values.
+const briefText = z.string().catch("")
+export const briefSchema = z
+  .object({
+    topic: briefText,
+    context: briefText,
+    depth: briefText,
+    breadth: briefText,
+    final_source_count: z.number().nullable().catch(null),
+    audience: briefText,
+    geographic_scope: briefText,
+    time_horizon: briefText,
+    objective: briefText,
+    must_include: briefText,
+    must_exclude: briefText,
+    preferred_sources: briefText,
+    disallowed_sources: briefText,
+    agent: z.string().nullable().catch(null),
+    configured_api_keys: z.record(z.string(), z.unknown()).catch({}),
+  })
+  .transform(({ configured_api_keys, ...brief }) => ({ ...brief, keyNames: Object.keys(configured_api_keys) }))
+export type Brief = z.infer<typeof briefSchema>
+
 // Things a stream can follow: a research run, or one of the corpus jobs.
 export const streamTarget = z.object({
   kind: z.enum(["run", ...JOB_KINDS]),

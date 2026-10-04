@@ -75,7 +75,7 @@ npm run ui
 
 That one command installs the UI's dependencies on first run, then starts the Python backend and the UI together, both bound to 127.0.0.1. Ctrl-C stops both. The backend runs with the repo's `.venv` if there is one (so the optional extras above are available without activating it), otherwise with `python3`. You don't need any API keys: Codex signs in from the Agents page. If the backend is already running (`python3 run_app.py`), start just the UI with `npm --prefix ui run dev:web`.
 
-- **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, find its files, and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
+- **Runs** (`/`): every run, including ones from before a restart. Search and filter them, then open one to watch it live, stop it, see its **Brief** (everything you asked for, and which agent ran it), read its files in the **Artifacts** tab (Markdown and JSON shown inline, large files a step at a time), and run its **Pipeline**: post-process, build the Atlas, discover topics, compose terms, and compile the paper, each with live progress. Filters, the open run, and the tab are kept in the URL, so you can share a view or refresh it.
 - **New run** (`/new`): topic, depth, breadth, and scope controls. It warns you first if the agent isn't ready or no search key is set.
 - **Agents** (`/agents`): choose Codex or Gemini, see what each needs, sign in with ChatGPT, and check which search provider keys are set.
 

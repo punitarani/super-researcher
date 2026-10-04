@@ -62,6 +62,30 @@ test("on a phone, a run's back link returns to the list", async ({ page, request
   await expect(page.getByRole("complementary", { name: "Runs" })).toBeVisible()
 })
 
+test("the brief and the run's documents can be read, and nothing outside the run", async ({ page, request }) => {
+  const response = await request.post(`${API_URL}/api/runs`, {
+    data: { topic: "Heat networks", context: "For a city energy memo", must_include: "district heating", depth: "low", breadth: "low", final_source_count: 3 },
+  })
+  const runId = (await response.json()).run_id as string
+  await expect.poll(async () => (await (await request.get(`${API_URL}/api/runs/${runId}`)).json()).state).toBe("completed")
+
+  await page.goto(`/?run=${runId}&tab=artifacts`)
+  await page.locator("summary", { hasText: /^Brief/ }).click()
+  await expect(page.getByText("For a city energy memo")).toBeVisible()
+  await expect(page.getByText("district heating")).toBeVisible()
+  await expect(page.getByRole("definition").filter({ hasText: "Gemini · API key" })).toBeVisible()
+
+  await page.getByRole("button", { name: "View run summary" }).click()
+  await expect(page).toHaveURL(/doc=run-summary\.md/)
+  await expect(page.getByRole("heading", { name: "Research Run Summary" })).toBeVisible()
+
+  await page.getByRole("button", { name: "View research protocol" }).click()
+  await expect(page.getByText("research_topic:")).toBeVisible()
+
+  await page.goto(`/?run=${runId}&tab=artifacts&doc=../app-settings.json`)
+  await expect(page.getByText("That file is outside this run's folder.")).toBeVisible()
+})
+
 test("pipeline jobs stream progress and show the backend's curation message", async ({ page, request }) => {
   const runId = await createRun(request, "Solid-state batteries")
   await expect.poll(async () => (await (await request.get(`${API_URL}/api/runs/${runId}`)).json()).state).toBe("completed")

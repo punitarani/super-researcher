@@ -18,6 +18,10 @@ import { formatTime } from "@/lib/labels"
 import { isActive, runSchema, type Run } from "@/lib/schemas"
 import { runsHref, runsParams, type RunTab } from "@/lib/search-params"
 import { useLiveSnapshot } from "@/lib/use-live-snapshot"
+import { ViewDocButton } from "./doc-controls"
+
+// Matches VIEWABLE_EXTENSIONS in lib/run-files.ts (server-only).
+const VIEWABLE = /\.(md|markdown|json|jsonl|txt)$/i
 
 const METRICS = [
   ["Candidates", "candidate_sources"],
@@ -25,7 +29,16 @@ const METRICS = [
   ["Ingested", "ingested_sources"],
 ] as const
 
-export function RunDetail({ initial, pipeline }: { initial: Run; pipeline: ReactNode }) {
+type Props = {
+  initial: Run
+  /** Server-rendered: the run's brief, the Pipeline tab, and the open document with the report files. */
+  brief: ReactNode
+  pipeline: ReactNode
+  document: ReactNode
+  reportFiles: [string, string][]
+}
+
+export function RunDetail({ initial, brief, pipeline, document, reportFiles }: Props) {
   const { data: run, error } = useLiveSnapshot(`/api/stream/run/${encodeURIComponent(initial.run_id)}`, runSchema, initial)
   const [{ q, state }] = useQueryStates(runsParams)
   // Switching tabs re-renders on the server so the Pipeline tab loads only when opened.
@@ -50,6 +63,8 @@ export function RunDetail({ initial, pipeline }: { initial: Run; pipeline: React
           {isActive(run.state) && <StopButton runId={run.run_id} stopRequested={run.stop_requested} />}
         </div>
       </header>
+
+      {brief}
 
       <Card>
         <CardContent className="space-y-4">
@@ -113,8 +128,9 @@ export function RunDetail({ initial, pipeline }: { initial: Run; pipeline: React
         <TabsContent value="activity">
           <EventLog events={run.events} />
         </TabsContent>
-        <TabsContent value="artifacts">
-          <Artifacts run={run} />
+        <TabsContent value="artifacts" className="space-y-4">
+          {document}
+          <Artifacts run={run} reportFiles={reportFiles} />
         </TabsContent>
         <TabsContent value="pipeline">{pipeline ?? <Skeleton className="h-64" />}</TabsContent>
       </Tabs>
@@ -170,8 +186,8 @@ function EventLog({ events }: { events: Run["events"] }) {
   )
 }
 
-function Artifacts({ run }: { run: Run }) {
-  const files = Object.entries(run.files)
+function Artifacts({ run, reportFiles }: { run: Run; reportFiles: [string, string][] }) {
+  const files = [...Object.entries(run.files), ...reportFiles]
   return (
     <div className="space-y-4 text-sm">
       <PathRow label="Run folder" path={run.dossier_path} />
@@ -179,7 +195,7 @@ function Artifacts({ run }: { run: Run }) {
         <ul className="divide-y rounded-lg border">
           {files.map(([name, path]) => (
             <li key={name} className="px-3 py-1">
-              <PathRow label={name.replaceAll("_", " ")} path={path} shown={path.startsWith(`${run.dossier_path}/`) ? path.slice(run.dossier_path.length + 1) : path} />
+              <PathRow label={name.replaceAll("_", " ")} path={path} shown={relativeTo(run.dossier_path, path)} />
             </li>
           ))}
         </ul>
@@ -200,15 +216,20 @@ function Artifacts({ run }: { run: Run }) {
   )
 }
 
-function PathRow({ label, path, shown = path }: { label: string; path: string; shown?: string }) {
+function relativeTo(folder: string, path: string) {
+  return path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : null
+}
+
+function PathRow({ label, path, shown }: { label: string; path: string; shown?: string | null }) {
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
         <div className="font-medium capitalize">{label}</div>
         <code className="block truncate font-mono text-xs text-muted-foreground" title={path}>
-          {shown}
+          {shown ?? path}
         </code>
       </div>
+      {shown && VIEWABLE.test(shown) && <ViewDocButton path={shown} label={label} />}
       <CopyButton value={path} label={`Copy ${label} path`} />
     </div>
   )

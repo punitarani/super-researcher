@@ -1,5 +1,5 @@
 // URL state for the runs page, shared by server pages and client hooks.
-import { createLoader, createSerializer, parseAsArrayOf, parseAsString, parseAsStringLiteral } from "nuqs/server"
+import { createLoader, createSerializer, parseAsArrayOf, parseAsInteger, parseAsString, parseAsStringLiteral } from "nuqs/server"
 import { ACTIVE_STATES } from "./schemas"
 
 export const RUN_FILTERS = ["all", "active", "completed", "failed", "stopped"] as const
@@ -14,6 +14,9 @@ export const runsParams = {
   tab: parseAsStringLiteral(RUN_TABS).withDefault("activity"),
   // Pipeline jobs being watched, as "kind:jobId", so a refresh keeps following them.
   jobs: parseAsArrayOf(parseAsString).withDefault([]),
+  // Artifacts tab: the open document (a path inside the run folder) and how many times "Show more" was used.
+  doc: parseAsString,
+  more: parseAsInteger.withDefault(0),
 }
 
 export const loadRunsParams = createLoader(runsParams)

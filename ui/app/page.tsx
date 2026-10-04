@@ -5,12 +5,15 @@ import { api, attempt } from "@/lib/backend"
 import { loadRunsParams } from "@/lib/search-params"
 import { Pipeline } from "./pipeline"
 import { RunDetail } from "./run-detail"
+import { DocumentView, publishedFiles, RunBrief } from "./run-documents"
 import { RunList } from "./run-list"
 
 export default async function RunsPage({ searchParams }: PageProps<"/">) {
-  const { run: runId, tab, jobs } = await loadRunsParams(searchParams)
+  const { run: runId, tab, jobs, doc, more } = await loadRunsParams(searchParams)
   const [runs, run] = await Promise.all([attempt(api.runs()), runId ? attempt(api.run(runId)) : null])
   if (!runs.data) return <BackendProblem title="Can't load runs" message={runs.error} />
+  // Files are read only for the tab that shows them, and a document only once it's opened.
+  const reportFiles = tab === "artifacts" && run?.data ? await publishedFiles(run.data) : []
 
   return (
     <div className="grid gap-6 md:grid-cols-[17rem_minmax(0,1fr)] lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -27,6 +30,20 @@ export default async function RunsPage({ searchParams }: PageProps<"/">) {
           <RunDetail
             key={run.data.run_id}
             initial={run.data}
+            brief={
+              // Keyed: these sit among RunDetail's own children, which React checks for keys.
+              <Suspense key="brief" fallback={<Skeleton className="h-11" />}>
+                <RunBrief run={run.data} />
+              </Suspense>
+            }
+            document={
+              tab === "artifacts" && doc ? (
+                <Suspense key={`${doc}:${more}`} fallback={<Skeleton className="h-64" />}>
+                  <DocumentView run={run.data} doc={doc} more={more} />
+                </Suspense>
+              ) : null
+            }
+            reportFiles={reportFiles}
             pipeline={
               tab === "pipeline" ? (
                 <Suspense fallback={<Skeleton className="h-64" />}>
