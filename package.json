@@ -4,6 +4,7 @@
   "description": "Local UI and corpus builder for Phase 1 and Phase 2.",
   "main": "index.js",
   "scripts": {
+    "ui": "npm --prefix ui install --no-audit --no-fund && npm --prefix ui run dev",
     "build:atlas": "vite build",
     "test": "python3 -m unittest discover -s tests"
   },
