@@ -28,7 +28,7 @@ export default async function AgentsPage() {
           </CardTitle>
           <CardDescription>
             {hasSearch
-              ? "Discovery searches with every provider that has a key."
+              ? "Each search tries these in order (Exa, Serper, SerpAPI) and uses the first that returns results."
               : "No search key yet, so discovery won't find new sources. Add one of these to .env (see .env.example). It's read on every run, so there's no restart."}
           </CardDescription>
         </CardHeader>
