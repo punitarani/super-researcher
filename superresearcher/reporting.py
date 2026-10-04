@@ -6,6 +6,7 @@ import mimetypes
 import re
 import shutil
 import subprocess
+import sysconfig
 import tempfile
 import urllib.request
 from collections import defaultdict
@@ -1579,11 +1580,12 @@ def render_pdf_preview(markdown: str, html: str, template: dict[str, Any], outpu
 
 
 def html_pdf_renderer_path() -> str:
-    path = shutil.which("weasyprint")
-    if path:
-        return path
-    local = REPORTING_VENV / "bin" / "weasyprint"
-    return str(local) if local.exists() else ""
+    # pip installs the weasyprint command next to this Python, which isn't on PATH unless its venv is activated.
+    for search_path in (None, sysconfig.get_path("scripts"), str(REPORTING_VENV / "bin")):
+        path = shutil.which("weasyprint", path=search_path)
+        if path:
+            return path
+    return ""
 
 
 def uses_original_latex_pdf(template: dict[str, Any]) -> bool:

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import struct
+import sysconfig
 import tempfile
 import unittest
 import zlib
 from pathlib import Path
+from unittest.mock import patch
 
 from superresearcher import publish, reporting
 
@@ -434,6 +437,17 @@ p { text-justify: inter-word; font-weight: 760; box-shadow: 0 1px 3px #000; }
 
             self.assertTrue(any("--pdf-engine=xelatex" in command for command in manifest["commands"] if isinstance(command, list)))
             self.assertTrue(any(row["format"] == "pdf" and Path(row["path"]).exists() for row in manifest["outputs"]))
+
+
+class PdfRendererLookupTests(unittest.TestCase):
+    def test_finds_weasyprint_next_to_the_running_python_when_not_on_path(self) -> None:
+        # e.g. the app started as .venv/bin/python run_app.py without activating the venv
+        with tempfile.TemporaryDirectory() as scripts:
+            command = Path(scripts) / "weasyprint"
+            command.write_text("#!/bin/sh\n", encoding="utf-8")
+            command.chmod(0o755)
+            with patch.dict(os.environ, {"PATH": ""}), patch.object(sysconfig, "get_path", return_value=scripts):
+                self.assertEqual(reporting.html_pdf_renderer_path(), str(command))
 
 
 if __name__ == "__main__":
