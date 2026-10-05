@@ -120,12 +120,15 @@ class LLMClient:
         self._record(step, prompt, reply, "answered", None, started)
         return value
 
-    def text_call(self, prompt: str, step: str = "Prompt") -> str:
+    def text_call(self, prompt: str, step: str = "Prompt", fallback: str | None = None) -> str:
+        """The agent's reply. On failure, return `fallback` (logged as using defaults) if given, else raise."""
         started, reply = self._start()
         try:
             reply = strip_markdown_fence(self._complete(prompt, json_mode=False))
         except Exception as exc:
-            self._record(step, prompt, None, "failed", str(exc), started)
+            self._record(step, prompt, None, "failed" if fallback is None else "fell_back", str(exc), started)
+            if fallback is not None:
+                return fallback
             raise
         self._record(step, prompt, reply, "answered", None, started)
         return reply
@@ -154,6 +157,8 @@ class LLMClient:
     def _complete(self, prompt: str, json_mode: bool) -> str:
         if self.unavailable:
             raise LLMError(self.unavailable)
+        if self.agent == "gemini" and not gemini_key(self.keys):
+            raise LLMError("Gemini key not configured")
         self._sent = True
         if self.agent == "gemini":
             try:

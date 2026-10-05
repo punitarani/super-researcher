@@ -34,7 +34,7 @@ class FakeLLM:
             ]
         }
 
-    def text_call(self, prompt: str, step: str = "") -> str:
+    def text_call(self, prompt: str, step: str = "", fallback: str | None = None) -> str:
         if "Compact the running paper summary" in prompt:
             return "Prior sections covered safety and market evidence."
         self.section_calls += 1

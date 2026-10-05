@@ -6,6 +6,7 @@
 export function relativeToRun(file: string, runFolder: string) {
   if (file.startsWith(`${runFolder}/`)) return file.slice(runFolder.length + 1)
   const marker = `/${runFolder.slice(runFolder.lastIndexOf("/") + 1)}/`
-  const at = file.lastIndexOf(marker)
+  // The first match is the run folder itself; a later one would be a folder inside it.
+  const at = file.indexOf(marker)
   return at >= 0 ? file.slice(at + marker.length) : null
 }

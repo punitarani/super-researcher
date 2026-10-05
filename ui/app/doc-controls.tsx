@@ -1,6 +1,7 @@
 "use client"
 
-import { Eye, LoaderCircle, X } from "lucide-react"
+import { Eye, LoaderCircle, RefreshCw, X } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useQueryStates } from "nuqs"
 import { useTransition } from "react"
 import { Button } from "@/components/ui/button"
@@ -41,6 +42,17 @@ export function ShowMoreButton() {
   return (
     <Button variant="outline" size="sm" disabled={pending} onClick={() => set({ more: more + 1 })}>
       {pending && <LoaderCircle className="animate-spin" />} Show more
+    </Button>
+  )
+}
+
+/** These tabs are read once per page render; while a run is going, this re-reads them. */
+export function RefreshButton() {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  return (
+    <Button variant="outline" size="sm" disabled={pending} onClick={() => startTransition(() => router.refresh())}>
+      {pending ? <LoaderCircle className="animate-spin" /> : <RefreshCw />} Refresh
     </Button>
   )
 }

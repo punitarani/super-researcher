@@ -30,6 +30,17 @@ describe("parseSources", () => {
     expect(parseSources(line(moved), false, folder)[0].textPath).toBe("markdown/0001-metal.md")
   })
 
+  it("keeps a folder inside the run that shares the run's name", () => {
+    const nested = { ...rows[0], markdown_path: "/old/x_Corpus/assets/x_Corpus/notes.md" }
+    expect(parseSources(line(nested), false, folder)[0].textPath).toBe("assets/x_Corpus/notes.md")
+  })
+
+  it("only links web addresses", () => {
+    const odd = ["data:text/html,<b>hi</b>", "file:///etc/passwd", "javascript:alert(1)"].map((url) => ({ ...rows[0], url }))
+    expect(parseSources(odd.map(line).join("\n"), false, folder).map((row) => row.link)).toEqual([null, null, null])
+    expect(parsed[0].link).toBe("https://arxiv.org/pdf/1")
+  })
+
   it("skips a line cut off by truncation and lines that aren't sources", () => {
     const text = [line(rows[0]), "not json", line(rows[1]), '{"url": "https://cut'].join("\n")
     expect(parseSources(text, true, folder).map((row) => row.title)).toEqual(["METAL: Multilingual Meta-Evaluation", "Agency report"])

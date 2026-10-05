@@ -67,12 +67,18 @@ export function SourceList({ sources }: { sources: Source[] }) {
           {shown.map((source) => (
             <li key={source.index} className="flex flex-wrap items-start gap-3 px-3 py-2 text-sm">
               <div className="min-w-0 flex-1 space-y-1">
-                <a href={source.url} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-full items-center gap-1 font-medium hover:underline">
-                  <span className="truncate">
+                {source.link ? (
+                  <a href={source.link} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-full items-center gap-1 font-medium hover:underline">
+                    <span className="truncate">
+                      {source.index}. {source.title}
+                    </span>
+                    <ExternalLink className="size-3 shrink-0" aria-hidden />
+                  </a>
+                ) : (
+                  <span className="block truncate font-medium" title={source.url}>
                     {source.index}. {source.title}
                   </span>
-                  <ExternalLink className="size-3 shrink-0" aria-hidden />
-                </a>
+                )}
                 <div className="text-xs text-muted-foreground">
                   {[source.publisher, source.type, source.score === null ? null : `score ${source.score}`, source.status].filter(Boolean).join(" · ")}
                 </div>

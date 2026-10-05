@@ -21,6 +21,7 @@ CALLS_DIR = Path("logs") / "agent-calls"
 MAX_BODY_CHARS = 400_000  # per prompt or reply; longer ones are clipped
 
 _lock = threading.Lock()
+_next_call: dict[Path, int] = {}  # per calls folder, so numbering doesn't rescan it on every call
 
 _TOKENS = [
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),  # OpenAI-style keys
@@ -31,7 +32,8 @@ _TOKENS = [
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),  # JWTs
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{16,}"),
 ]
-_PAIR = re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd)(\s*[:=]\s*)([\"']?)([^\s\"',;]{8,})")
+# name = value, name: value, and quoted keys as in JSON or dicts ("password": "...").
+_PAIR = re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd)([\"']?\s*[:=]\s*)([\"']?)([^\s\"',;]{8,})")
 
 
 def enabled() -> bool:
@@ -73,7 +75,9 @@ class AgentLog:
             with _lock:
                 calls = self.run_dir / CALLS_DIR
                 calls.mkdir(parents=True, exist_ok=True)
-                number = sum(1 for _ in calls.glob("*-prompt.txt")) + 1
+                calls = calls.resolve()  # the run and its jobs may name the same folder differently
+                number = _next_call.get(calls) or sum(1 for _ in calls.glob("*-prompt.txt")) + 1
+                _next_call[calls] = number + 1
                 atomic_write_text(calls / f"{number:04d}-prompt.txt", self._clean(prompt))
                 atomic_write_text(calls / f"{number:04d}-reply.txt", self._clean(reply or ""))
                 entry = {
@@ -91,7 +95,7 @@ class AgentLog:
                 }
                 with (self.run_dir / LOG_INDEX).open("a", encoding="utf-8") as index:
                     index.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
+        except Exception:  # disk errors, text that can't be encoded: losing a log line beats failing the run
             pass
 
     def _clean(self, text: str) -> str:

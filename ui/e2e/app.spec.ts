@@ -147,7 +147,7 @@ test("the agent log shows each call, why it used defaults, and its prompt", asyn
   await expect(page.getByText("You are the Archetype Classifier")).toBeVisible()
 })
 
-test("agents page explains how to set each agent up", async ({ page }) => {
+test("agents page explains how to set each agent up", async ({ page, request }) => {
   await page.goto("/agents")
   await expect(page.getByRole("heading", { name: "Gemini" })).toBeVisible()
   await expect(page.getByText("Add GEMINI_API_KEY to .env")).toBeVisible()
@@ -156,10 +156,15 @@ test("agents page explains how to set each agent up", async ({ page }) => {
 
   const log = page.getByLabel("Keep a log of each agent prompt and reply")
   await expect(log).toBeChecked()
-  await log.click()
-  await expect(log).not.toBeChecked()
-  await page.reload()
-  await expect(log).not.toBeChecked()
-  await log.click()
-  await expect(log).toBeChecked()
+  try {
+    await log.click()
+    await expect(log).not.toBeChecked()
+    await page.reload()
+    await expect(log).not.toBeChecked()
+    await log.click()
+    await expect(log).toBeChecked()
+  } finally {
+    // The setting is shared by the whole e2e backend, so never leave logging off for other tests.
+    await request.put(`${API_URL}/api/settings`, { data: { agent_log: true } })
+  }
 })

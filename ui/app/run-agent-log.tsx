@@ -6,8 +6,8 @@ import { AGENT_LOG_INDEX, callFiles, parseAgentLog, summarizeCalls, TOPIC_PROMPT
 import { api, attempt } from "@/lib/backend"
 import { formatTime } from "@/lib/labels"
 import { MAX_BYTES, readRunFile, runFileExists } from "@/lib/run-files"
-import type { Run } from "@/lib/schemas"
-import { CloseButton, OpenButton } from "./doc-controls"
+import { isActive, type Run } from "@/lib/schemas"
+import { CloseButton, OpenButton, RefreshButton } from "./doc-controls"
 import { FileBody, locate, readStep, settle } from "./run-documents"
 
 const OUTCOMES: Record<AgentCall["outcome"], { label: string; variant: "secondary" | "outline" | "destructive" }> = {
@@ -43,7 +43,14 @@ export async function RunAgentLog({ run, call, more }: { run: Run; call: string 
         </p>
       </div>
 
-      {call !== null && <CallView folder={folder.data} call={call} calls={calls} more={more} />}
+      {isActive(run.state) && (
+        <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
+          <span>This run is still going, so new calls appear when it finishes or when you refresh.</span>
+          <RefreshButton />
+        </div>
+      )}
+
+      {call !== null && <CallView folder={folder.data} call={call} calls={calls} complete={!index.data?.truncated} more={more} />}
 
       {calls.length > 0 && (
         <p className="text-muted-foreground">
@@ -90,9 +97,10 @@ export async function RunAgentLog({ run, call, more }: { run: Run; call: string 
   )
 }
 
-async function CallView({ folder, call, calls, more }: { folder: string; call: string; calls: AgentCall[]; more: number }) {
-  const files = callFiles(call)
+async function CallView({ folder, call, calls, complete, more }: { folder: string; call: string; calls: AgentCall[]; complete: boolean; more: number }) {
   const entry = calls.find((item) => String(item.call) === call)
+  // A numbered call must be in the log, unless the log was too large to read in full.
+  const files = call === "topics" || entry || !complete ? callFiles(call) : null
   const title = call === "topics" ? "Topic discovery: saved prompt" : entry ? `${entry.call}. ${entry.step}` : `Call ${call}`
   const [prompt, reply] = files ? await Promise.all([readStep(folder, files.prompt, more), readStep(folder, files.reply, more)]) : [null, null]
   return (

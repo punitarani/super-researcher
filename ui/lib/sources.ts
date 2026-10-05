@@ -19,6 +19,8 @@ const sourceRowSchema = z.object({
 export type Source = {
   index: number
   url: string
+  /** The URL when it's a web address, the only kind the list links to. */
+  link: string | null
   title: string
   publisher: string
   type: string
@@ -63,6 +65,7 @@ export function parseSources(text: string, truncated: boolean, runFolder: string
     sources.push({
       index: sources.length + 1,
       url: row.url,
+      link: /^https?:\/\//i.test(row.url) ? row.url : null,
       title: row.title || row.url,
       publisher: row.publisher,
       type: row.source_type,

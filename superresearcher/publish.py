@@ -607,11 +607,12 @@ New section title: {plan_section['title']}
 New section:
 {section_markdown[:20000]}
 """
+    fallback = f"{previous_summary}\n\n{plan_section['title']}: {strip_markdown(section_markdown)[:1200]}".strip()[-7000:]
     try:
-        return llm.text_call(prompt, step=f"Compile: running summary after {plan_section['title']}").strip()[:7000]
+        # With a fallback, a failed prompt is logged as using built-in defaults, which is what happens here.
+        return llm.text_call(prompt, step=f"Compile: running summary after {plan_section['title']}", fallback=fallback).strip()[:7000]
     except Exception:
-        fallback = f"{previous_summary}\n\n{plan_section['title']}: {strip_markdown(section_markdown)[:1200]}".strip()
-        return fallback[-7000:]
+        return fallback
 
 
 def write_final_paper(corpus: Path, plan: dict[str, Any], state: dict[str, Any], source_index: dict[str, Any]) -> None:

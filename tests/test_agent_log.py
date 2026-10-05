@@ -38,6 +38,10 @@ class RedactTests(unittest.TestCase):
         self.assertEqual(redact('api_key="abcd1234efgh5678"'), 'api_key="[redacted]"')
         self.assertEqual(redact("password: hunter2hunter2"), "password: [redacted]")
 
+    def test_quoted_keys_in_json_and_dicts_are_redacted(self) -> None:
+        self.assertEqual(redact('{"password": "correcthorsebattery"}'), '{"password": "[redacted]"}')
+        self.assertEqual(redact("{'api_key': '0123456789abcdef'}"), "{'api_key': '[redacted]'}")
+
     def test_ordinary_text_is_left_alone(self) -> None:
         text = "Keep the token budget under 512 and the secret sauce is evidence. A key finding: recall rose."
         self.assertEqual(redact(text), text)
@@ -120,6 +124,42 @@ class AgentLogTests(unittest.TestCase):
         (self.run_dir / "logs").write_text("not a folder", encoding="utf-8")
         with patch.object(llm.codex, "complete", return_value="fine"):
             self.assertEqual(self.client().text_call("Write"), "fine")
+
+    def test_text_that_cant_be_encoded_never_breaks_the_call(self) -> None:
+        # A lone surrogate (e.g. from a "\\ud83d" JSON escape in scraped text) can't be written as UTF-8.
+        with patch.object(llm.codex, "complete", return_value='{"ok": true}'):
+            self.assertEqual(self.client().json_call("Plan \ud83d", {}), {"ok": True})
+
+    def test_a_text_prompt_with_a_fallback_is_logged_as_using_defaults(self) -> None:
+        with patch.object(llm.codex, "complete", side_effect=codex.CodexError("Codex didn't answer within 10 minutes.")):
+            reply = self.client().text_call("Summarize", step="Compile: running summary after A", fallback="built-in summary")
+        self.assertEqual(reply, "built-in summary")
+        [entry] = self.entries()
+        self.assertEqual((entry["outcome"], entry["sent"]), ("fell_back", True))
+
+    def test_calls_are_numbered_without_rescanning_the_folder(self) -> None:
+        client = self.client()
+        with patch.object(llm.codex, "complete", return_value="ok"):
+            client.text_call("one")
+            with patch.object(Path, "glob", side_effect=AssertionError("rescanned")):
+                client.text_call("two")
+        self.assertEqual([entry["call"] for entry in self.entries()], [1, 2])
+
+    def test_two_names_for_the_same_run_folder_share_one_numbering(self) -> None:
+        alias = self.run_dir.parent / f"{self.run_dir.name}-alias"
+        alias.symlink_to(self.run_dir)
+        self.addCleanup(alias.unlink)
+        run, job = self.client(), LLMClient({}, agent="codex", log=AgentLog(alias))
+        with patch.object(llm.codex, "complete", return_value="ok"):
+            run.text_call("from the run")
+            job.text_call("from a job")
+            run.text_call("from the run again")
+        self.assertEqual([entry["call"] for entry in self.entries()], [1, 2, 3])
+
+    def test_a_gemini_prompt_without_a_key_is_not_sent(self) -> None:
+        client = LLMClient({}, agent="gemini", log=AgentLog(self.run_dir))
+        client.json_call("Plan", {})
+        self.assertFalse(self.entries()[0]["sent"])
 
     def test_client_for_logs_into_the_run_folder_and_redacts_configured_keys(self) -> None:
         with patch.object(llm, "load_api_keys", return_value={"SERPER_API_KEY": "serper-secret-999"}), patch.object(llm, "selected_agent", return_value="codex"):
