@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* Dark mode follows the OS setting. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Rendered Markdown from run files (components/markdown.tsx). */
+@layer components {
+  .doc-markdown {
+    @apply space-y-3 text-sm leading-relaxed break-words;
+  }
+  .doc-markdown h1 {
+    @apply text-lg font-semibold;
+  }
+  .doc-markdown h2 {
+    @apply pt-2 text-base font-semibold;
+  }
+  .doc-markdown h3,
+  .doc-markdown h4 {
+    @apply font-semibold;
+  }
+  .doc-markdown ul {
+    @apply list-disc space-y-1 pl-5;
+  }
+  .doc-markdown ol {
+    @apply list-decimal space-y-1 pl-5;
+  }
+  .doc-markdown a {
+    @apply underline underline-offset-2;
+  }
+  .doc-markdown code {
+    @apply rounded bg-muted px-1 font-mono text-xs;
+  }
+  .doc-markdown pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3;
+  }
+  .doc-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .doc-markdown blockquote {
+    @apply border-l-2 pl-3 text-muted-foreground;
+  }
+  .doc-markdown table {
+    @apply block w-full overflow-x-auto text-xs;
+  }
+  .doc-markdown th,
+  .doc-markdown td {
+    @apply border px-2 py-1 text-left align-top;
+  }
+  .doc-markdown hr {
+    @apply border-border;
+  }
+}

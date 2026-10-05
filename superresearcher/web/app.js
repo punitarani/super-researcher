@@ -368,7 +368,7 @@ async function pollRun() {
   try {
     const run = await fetchJson(`/api/runs/${encodeURIComponent(state.activeRunId)}`);
     setRunState(run);
-    if (run.state === "completed" || run.state === "failed") {
+    if (run.state !== "queued" && run.state !== "running") {
       window.clearInterval(state.pollTimer);
       state.pollTimer = null;
     }

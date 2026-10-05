@@ -25,12 +25,16 @@ TRACKING_PARAMS = {
 }
 
 
-def discover_candidates(search_plan: dict[str, Any], keys: dict[str, str], progress=None, max_batches: int | None = None) -> list[dict[str, Any]]:
+def discover_candidates(
+    search_plan: dict[str, Any], keys: dict[str, str], progress=None, max_batches: int | None = None, should_stop=None
+) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     report: dict[str, Any] = {"answered": 0, "errors": {}}
     reported: set[str] = set()
     batches = search_plan["batches"][: max_batches or len(search_plan["batches"])]
     for idx, batch in enumerate(batches, start=1):
+        if should_stop and should_stop():
+            break
         if progress and (idx == 1 or idx % 10 == 0):
             progress(f"Discovery running: {idx}/{len(batches)} searches checked, {len(candidates)} candidates found.")
         rows = search_batch(batch, keys, report)
@@ -40,7 +44,7 @@ def discover_candidates(search_plan: dict[str, Any], keys: dict[str, str], progr
                 progress(message)
             reported.add(provider)
         time.sleep(0.1)
-    if report["errors"] and not report["answered"]:
+    if report["errors"] and not report["answered"] and not (should_stop and should_stop()):
         # Every search failed (bad key, no credits, offline): say why instead of finishing with no sources.
         raise RuntimeError(" ".join(report["errors"].values()))
     return candidates

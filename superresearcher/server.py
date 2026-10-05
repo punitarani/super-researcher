@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import mimetypes
+import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Any
 
 from . import __version__
 from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, load_app_settings, redact_keys, save_app_settings
-from .runner import RUNS, ResearchRun
+from .runner import RUNS, ResearchRun, get_run, list_runs
 from . import atlas, codex, llm, postprocess, publish, query_bundles, reporting, topic_discovery
 
 
@@ -21,6 +22,7 @@ def _web_dir() -> Path:
 
 
 WEB = _web_dir()
+LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "[::1]"}
 
 
 def web_file(root: Path, relative: str) -> Path | None:
@@ -62,13 +64,12 @@ class Handler(BaseHTTPRequestHandler):
             refresh = urllib.parse.parse_qs(parsed.query).get("refresh") == ["1"]
             return self.send_json(llm.agents_payload(refresh=refresh))
         if path == "/api/runs":
-            return self.send_json([run.snapshot() for run in RUNS.values()])
+            return self.send_json(list_runs())
         if path.startswith("/api/runs/"):
-            run_id = urllib.parse.unquote(path.removeprefix("/api/runs/"))
-            run = RUNS.get(run_id)
+            run = get_run(urllib.parse.unquote(path.removeprefix("/api/runs/")))
             if not run:
                 return self.send_json({"error": "Run not found"}, status=404)
-            return self.send_json(run.snapshot())
+            return self.send_json(run)
         if path == "/api/corpora":
             corpora = atlas.list_corpora()
             return self.send_json({"corpora": corpora, "latest_corpus_id": atlas.latest_corpus_id()})
@@ -148,6 +149,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"url": codex.start_login()}, status=202)
             except codex.CodexError as exc:
                 return self.send_json({"error": str(exc)}, status=400)
+        if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/stop"):
+            run_id = urllib.parse.unquote(parsed.path.removeprefix("/api/runs/").removesuffix("/stop"))
+            run = RUNS.get(run_id)
+            if not run:
+                return self.send_json({"error": "Run not found, or it isn't running in this app session."}, status=404)
+            if not run.stop():
+                return self.send_json({"error": "This run has already finished."}, status=409)
+            return self.send_json(run.snapshot(), status=202)
         if parsed.path == "/api/atlas/build":
             try:
                 payload = self.read_json()
@@ -307,9 +316,12 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"error": "Changes can only be made from the app on this computer."}, status=403)
 
     def is_local_json_request(self) -> bool:
-        # Loopback-only, and JSON-only so other websites can't trigger it with a plain form post.
+        # Loopback-only, addressed to this computer by name (so a page that points its own domain
+        # at 127.0.0.1, a DNS rebinding attack, can't use it), and JSON-only so other websites
+        # can't trigger it with a plain form post.
         is_loopback = ipaddress.ip_address(self.client_address[0]).is_loopback
-        return is_loopback and self.headers.get("Content-Type", "").startswith("application/json")
+        host = re.sub(r":\d+$", "", self.headers.get("Host", "")).lower()
+        return is_loopback and host in LOCAL_HOSTNAMES and self.headers.get("Content-Type", "").startswith("application/json")
 
     def read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
