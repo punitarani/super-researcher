@@ -160,7 +160,8 @@ class TopicApiTests(unittest.TestCase):
 
     def test_publish_plan_route(self) -> None:
         payload = {"plan": {"exists": True}}
-        with patch.object(server.publish, "create_publish_plan", return_value=payload) as mocked:
+        # Planning needs a ready agent; stub the check so the test doesn't depend on this machine's Codex sign-in.
+        with patch.object(server.llm, "require_ready_agent"), patch.object(server.publish, "create_publish_plan", return_value=payload) as mocked:
             with topic_server() as base:
                 result = request_json(f"{base}/api/publish/plan", "POST", {"corpus_id": "demo_Corpus", "custom_prompts": {"topic-1": "focus"}})
 
