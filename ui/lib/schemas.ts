@@ -86,6 +86,9 @@ export type Job = z.infer<typeof jobSchema>
 // Run, job and corpus ids: plain names, never "." or ".." (which a URL would resolve as a path).
 export const ID_PATTERN = /^(?!\.\.?$)[\w.-]{1,200}$/
 
+export const settingsSchema = z.object({ agent_log: z.boolean(), agent_log_location: z.string() })
+export type Settings = z.infer<typeof settingsSchema>
+
 // A run's brief, from its settings.json. Only the names of configured keys are kept, never values.
 const briefText = z.string().catch("")
 export const briefSchema = z

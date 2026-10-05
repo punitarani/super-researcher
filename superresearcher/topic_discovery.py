@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from . import atlas
-from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text, load_api_keys
-from .llm import LLMClient, require_ready_agent
+from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text
+from .llm import client_for, require_ready_agent
 
 
 GENERIC_LABELS = {
@@ -526,11 +526,11 @@ def run_topic_discovery(
             "(it needs the PDF extras from requirements-atlas.txt), then Build Atlas and Discover topics again."
         )
 
-    llm = llm or LLMClient(load_api_keys())
+    llm = llm or client_for(corpus_path)
     try:
         if progress:
             progress("Synthesizing topic tree", 76)
-        topic_tree = llm.text_call(prompt).strip()
+        topic_tree = llm.text_call(prompt, step="Topic discovery: outline").strip()
         if not topic_tree:
             raise RuntimeError("LLM returned empty Markdown.")
     except Exception as exc:

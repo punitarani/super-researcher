@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
 
 from . import codex
+from .agent_log import AgentLog
 from .config import codex_bin, load_api_keys, load_app_settings
 
 
@@ -93,28 +97,69 @@ def require_ready_agent() -> None:
 class LLMClient:
     """Sends prompts to one agent. Never falls back to another provider."""
 
-    def __init__(self, keys: dict[str, str], agent: str | None = None) -> None:
+    def __init__(self, keys: dict[str, str], agent: str | None = None, log: AgentLog | None = None) -> None:
         self.keys = keys
         self.agent = agent or selected_agent(keys)
         # Set after a failure every later call would repeat (signed out, usage limit), so jobs fail fast.
         self.unavailable: str | None = None
         # Told why, whenever a JSON prompt fails and the caller's built-in default is used instead.
         self.on_fallback: Callable[[str], None] | None = None
+        self.log = log
+        self._sent = False
 
-    def json_call(self, prompt: str, fallback: Any) -> Any:
+    def json_call(self, prompt: str, fallback: Any, step: str = "Prompt") -> Any:
+        started, reply = self._start()
         try:
-            return extract_json(self._complete(prompt, json_mode=True))
+            reply = self._complete(prompt, json_mode=True)
+            value = extract_json(reply)
         except Exception as exc:
+            self._record(step, prompt, reply, "fell_back", str(exc), started)
             if self.on_fallback:
                 self.on_fallback(str(exc))
             return fallback
+        self._record(step, prompt, reply, "answered", None, started)
+        return value
 
-    def text_call(self, prompt: str) -> str:
-        return strip_markdown_fence(self._complete(prompt, json_mode=False))
+    def text_call(self, prompt: str, step: str = "Prompt", fallback: str | None = None) -> str:
+        """The agent's reply. On failure, return `fallback` (logged as using defaults) if given, else raise."""
+        started, reply = self._start()
+        try:
+            reply = strip_markdown_fence(self._complete(prompt, json_mode=False))
+        except Exception as exc:
+            self._record(step, prompt, None, "failed" if fallback is None else "fell_back", str(exc), started)
+            if fallback is not None:
+                return fallback
+            raise
+        self._record(step, prompt, reply, "answered", None, started)
+        return reply
+
+    def _start(self) -> tuple[tuple[datetime, float], str | None]:
+        self._sent = False
+        return (datetime.now(), time.monotonic()), None
+
+    def _record(self, step: str, prompt: str, reply: str | None, outcome: str, reason: str | None, started: tuple[datetime, float]) -> None:
+        if not self.log:
+            return
+        model = self.keys.get("GEMINI_MODEL", GEMINI_DEFAULT_MODEL) if self.agent == "gemini" else self.keys.get("CODEX_MODEL") or "plan default"
+        self.log.record(
+            step=step,
+            agent=self.agent,
+            model=model,
+            prompt=prompt,
+            reply=reply,
+            outcome=outcome,
+            reason=reason,
+            sent=self._sent,
+            started_at=started[0],
+            duration_ms=round((time.monotonic() - started[1]) * 1000),
+        )
 
     def _complete(self, prompt: str, json_mode: bool) -> str:
         if self.unavailable:
             raise LLMError(self.unavailable)
+        if self.agent == "gemini" and not gemini_key(self.keys):
+            raise LLMError("Gemini key not configured")
+        self._sent = True
         if self.agent == "gemini":
             try:
                 return gemini_call(self.keys, prompt, json_mode)
@@ -128,6 +173,12 @@ class LLMClient:
             if exc.fatal:
                 self.unavailable = str(exc)
             raise LLMError(str(exc)) from exc
+
+
+def client_for(run_dir: Path) -> LLMClient:
+    """A client for jobs on one run, logging its prompts and replies into that run's folder."""
+    keys = load_api_keys()
+    return LLMClient(keys, log=AgentLog(run_dir, keys.values()))
 
 
 def gemini_key(keys: dict[str, str]) -> str | None:

@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatTime } from "@/lib/labels"
 import { isActive, runSchema, type Run } from "@/lib/schemas"
 import { runsHref, runsParams, type RunTab } from "@/lib/search-params"
+import { relativeToRun } from "@/lib/run-paths"
 import { useLiveSnapshot } from "@/lib/use-live-snapshot"
 import { ViewDocButton } from "./doc-controls"
 
@@ -31,14 +32,16 @@ const METRICS = [
 
 type Props = {
   initial: Run
-  /** Server-rendered: the run's brief, the Pipeline tab, and the open document with the report files. */
+  /** Server-rendered, each only while its tab is open: the brief, Pipeline, Sources, Agent log, and the open document. */
   brief: ReactNode
   pipeline: ReactNode
+  sources: ReactNode
+  agentLog: ReactNode
   document: ReactNode
   reportFiles: [string, string][]
 }
 
-export function RunDetail({ initial, brief, pipeline, document, reportFiles }: Props) {
+export function RunDetail({ initial, brief, pipeline, sources, agentLog, document, reportFiles }: Props) {
   const { data: run, error } = useLiveSnapshot(`/api/stream/run/${encodeURIComponent(initial.run_id)}`, runSchema, initial)
   const [{ q, state }] = useQueryStates(runsParams)
   // Switching tabs re-renders on the server so the Pipeline tab loads only when opened.
@@ -120,9 +123,12 @@ export function RunDetail({ initial, brief, pipeline, document, reportFiles }: P
       )}
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as RunTab)}>
-        <TabsList>
+        {/* Five tabs don't fit a phone; scroll them instead of widening the page. */}
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+          <TabsTrigger value="sources">Sources</TabsTrigger>
+          <TabsTrigger value="log">Agent log</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
         </TabsList>
         <TabsContent value="activity">
@@ -132,6 +138,8 @@ export function RunDetail({ initial, brief, pipeline, document, reportFiles }: P
           {document}
           <Artifacts run={run} reportFiles={reportFiles} />
         </TabsContent>
+        <TabsContent value="sources">{sources ?? <Skeleton className="h-64" />}</TabsContent>
+        <TabsContent value="log">{agentLog ?? <Skeleton className="h-64" />}</TabsContent>
         <TabsContent value="pipeline">{pipeline ?? <Skeleton className="h-64" />}</TabsContent>
       </Tabs>
     </article>
@@ -195,7 +203,7 @@ function Artifacts({ run, reportFiles }: { run: Run; reportFiles: [string, strin
         <ul className="divide-y rounded-lg border">
           {files.map(([name, path]) => (
             <li key={name} className="px-3 py-1">
-              <PathRow label={name.replaceAll("_", " ")} path={path} shown={relativeTo(run.dossier_path, path)} />
+              <PathRow label={name.replaceAll("_", " ")} path={path} shown={relativeToRun(path, run.dossier_path)} />
             </li>
           ))}
         </ul>
@@ -214,10 +222,6 @@ function Artifacts({ run, reportFiles }: { run: Run; reportFiles: [string, strin
       )}
     </div>
   )
-}
-
-function relativeTo(folder: string, path: string) {
-  return path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : null
 }
 
 function PathRow({ label, path, shown }: { label: string; path: string; shown?: string | null }) {

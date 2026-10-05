@@ -1,10 +1,10 @@
 // URL state for the runs page, shared by server pages and client hooks.
-import { createLoader, createSerializer, parseAsArrayOf, parseAsInteger, parseAsString, parseAsStringLiteral } from "nuqs/server"
+import { createLoader, createSerializer, parseAsArrayOf, parseAsBoolean, parseAsInteger, parseAsString, parseAsStringLiteral } from "nuqs/server"
 import { ACTIVE_STATES } from "./schemas"
 
 export const RUN_FILTERS = ["all", "active", "completed", "failed", "stopped"] as const
 export type RunFilter = (typeof RUN_FILTERS)[number]
-export const RUN_TABS = ["activity", "artifacts", "pipeline"] as const
+export const RUN_TABS = ["activity", "artifacts", "sources", "log", "pipeline"] as const
 export type RunTab = (typeof RUN_TABS)[number]
 
 export const runsParams = {
@@ -17,6 +17,14 @@ export const runsParams = {
   // Artifacts tab: the open document (a path inside the run folder) and how many times "Show more" was used.
   doc: parseAsString,
   more: parseAsInteger.withDefault(0),
+  // Sources tab: search, filters, and the source whose text is open.
+  sq: parseAsString.withDefault(""),
+  stype: parseAsString.withDefault(""),
+  sstatus: parseAsString.withDefault(""),
+  flagged: parseAsBoolean.withDefault(false),
+  src: parseAsInteger,
+  // Agent log tab: the call whose prompt and reply are open (a number, or "topics").
+  call: parseAsString,
 }
 
 export const loadRunsParams = createLoader(runsParams)

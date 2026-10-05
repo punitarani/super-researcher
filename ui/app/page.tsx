@@ -5,11 +5,13 @@ import { api, attempt } from "@/lib/backend"
 import { loadRunsParams } from "@/lib/search-params"
 import { Pipeline } from "./pipeline"
 import { RunDetail } from "./run-detail"
+import { RunAgentLog } from "./run-agent-log"
 import { DocumentView, publishedFiles, RunBrief } from "./run-documents"
+import { RunSources } from "./run-sources"
 import { RunList } from "./run-list"
 
 export default async function RunsPage({ searchParams }: PageProps<"/">) {
-  const { run: runId, tab, jobs, doc, more } = await loadRunsParams(searchParams)
+  const { run: runId, tab, jobs, doc, more, src, call } = await loadRunsParams(searchParams)
   const [runs, run] = await Promise.all([attempt(api.runs()), runId ? attempt(api.run(runId)) : null])
   if (!runs.data) return <BackendProblem title="Can't load runs" message={runs.error} />
   // Files are read only for the tab that shows them, and a document only once it's opened.
@@ -44,6 +46,20 @@ export default async function RunsPage({ searchParams }: PageProps<"/">) {
               ) : null
             }
             reportFiles={reportFiles}
+            sources={
+              tab === "sources" ? (
+                <Suspense fallback={<Skeleton className="h-64" />}>
+                  <RunSources run={run.data} src={src} more={more} />
+                </Suspense>
+              ) : null
+            }
+            agentLog={
+              tab === "log" ? (
+                <Suspense fallback={<Skeleton className="h-64" />}>
+                  <RunAgentLog run={run.data} call={call} more={more} />
+                </Suspense>
+              ) : null
+            }
             pipeline={
               tab === "pipeline" ? (
                 <Suspense fallback={<Skeleton className="h-64" />}>

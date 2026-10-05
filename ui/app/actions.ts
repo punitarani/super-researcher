@@ -26,6 +26,11 @@ export async function selectAgent(id: string): Promise<ActionResult> {
   return perform(() => api.selectAgent(agent.data))
 }
 
+export async function setAgentLog(enabled: unknown): Promise<ActionResult> {
+  if (typeof enabled !== "boolean") return { error: "Choose on or off." }
+  return perform(() => api.saveSettings(enabled))
+}
+
 export async function recheckAgents(): Promise<ActionResult> {
   return perform(() => api.agents(true))
 }

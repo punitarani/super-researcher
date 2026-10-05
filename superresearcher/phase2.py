@@ -26,7 +26,7 @@ def generate_heuristics(protocol: dict[str, Any], llm: LLMClient, out_path: Path
     levels = []
     for level in range(1, max_level + 1):
         fallback = fallback_level(level, protocol)
-        generated = llm.json_call(heuristic_prompt(level, protocol), fallback)
+        generated = llm.json_call(heuristic_prompt(level, protocol), fallback, step=f"Search heuristics: level {level}")
         if not isinstance(generated, dict) or "level" not in generated:
             generated = fallback
         levels.append(generated)

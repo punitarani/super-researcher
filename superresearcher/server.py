@@ -12,7 +12,7 @@ from typing import Any
 from . import __version__
 from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, load_app_settings, redact_keys, save_app_settings
 from .runner import RUNS, ResearchRun, get_run, list_runs
-from . import atlas, codex, llm, postprocess, publish, query_bundles, reporting, topic_discovery
+from . import agent_log, atlas, codex, llm, postprocess, publish, query_bundles, reporting, topic_discovery
 
 
 def _web_dir() -> Path:
@@ -60,6 +60,8 @@ class Handler(BaseHTTPRequestHandler):
                     "configured_api_keys": redact_keys(keys),
                 }
             )
+        if path == "/api/settings":
+            return self.send_json(app_settings_payload())
         if path == "/api/agents":
             refresh = urllib.parse.parse_qs(parsed.query).get("refresh") == ["1"]
             return self.send_json(llm.agents_payload(refresh=refresh))
@@ -278,6 +280,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self.is_local_json_request():
             return self.refuse_remote_change()
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/settings":
+            try:
+                value = self.read_json().get("agent_log")
+            except (ValueError, AttributeError):
+                value = None
+            if not isinstance(value, bool):
+                return self.send_json({"error": "agent_log must be true or false."}, status=400)
+            try:
+                save_app_settings({**load_app_settings(), "agent_log": value})
+            except OSError as exc:
+                return self.send_json({"error": f"Couldn't save the setting: {exc}"}, status=500)
+            return self.send_json(app_settings_payload())
         if parsed.path == "/api/agents":
             try:
                 agent = self.read_json().get("selected")
@@ -371,6 +385,13 @@ def validate_payload(payload: dict[str, Any]) -> None:
         raise ValueError("Final source count must be at least 1.")
     payload["final_source_count"] = min(final, FINAL_SOURCE_MAX)
     payload["storage_root"] = payload.get("storage_root") or str(DEFAULT_STORAGE_ROOT)
+
+
+def app_settings_payload() -> dict[str, Any]:
+    return {
+        "agent_log": agent_log.enabled(),
+        "agent_log_location": str(DEFAULT_STORAGE_ROOT / "<run folder>" / agent_log.LOG_INDEX),
+    }
 
 
 def parse_atlas_route(path: str) -> tuple[str, str, list[str]] | None:
