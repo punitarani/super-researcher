@@ -161,7 +161,7 @@ def postprocess_markdown_row(corpus: Path, row: dict[str, Any]) -> dict[str, Any
     result = {"row": dict(row), "scanned": 0, "pdf_scanned": 0, "flagged": 0, "reconverted": 0, "reflowed": 0, "unchanged": 0, "failed": 0}
     md_path = Path(row.get("markdown_path") or "")
     local_path = Path(row.get("local_path") or "")
-    if not md_path.exists():
+    if not md_path.is_file():
         return result
     result["scanned"] = 1
     if not is_pdf_source(row, local_path):
@@ -179,7 +179,7 @@ def postprocess_markdown_row(corpus: Path, row: dict[str, Any]) -> dict[str, Any
     asset_dir = corpus / "assets" / source_identifier(local_path, row)
     asset_dir.mkdir(parents=True, exist_ok=True)
     for method, converter in (("pymupdf4llm", pdf_via_pymupdf4llm), ("pymupdf_blocks", pdf_via_pymupdf)):
-        if not local_path.exists() or detect_magic(local_path) != "pdf":
+        if not local_path.is_file() or detect_magic(local_path) != "pdf":
             break
         try:
             candidate = normalize_pdf_asset_links(converter(local_path, asset_dir), asset_dir).strip()

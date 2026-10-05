@@ -9,6 +9,53 @@ from superresearcher import postprocess
 
 
 class MarkdownReadabilityPostprocessTests(unittest.TestCase):
+    def test_skips_rows_without_a_markdown_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = Path(tmp)
+            for paths in ({}, {"markdown_path": None}, {"markdown_path": ""}, {"markdown_path": "."}, {"markdown_path": str(corpus)}):
+                with self.subTest(paths=paths):
+                    row = {"source_type": "pdf", "fetch_status": "failed", **paths}
+
+                    result = postprocess.postprocess_markdown_row(corpus, row)
+
+                    self.assertEqual(result["row"], row)
+                    self.assertEqual(result["scanned"], 0)
+                    self.assertEqual(result["failed"], 0)
+
+    def test_reflows_markdown_without_an_original_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = Path(tmp)
+            md = corpus / "paper.md"
+            body = "\n".join(["A", "d", "v", "a", "n", "c", "e", "d"] * 30)
+            for paths in ({}, {"local_path": None}, {"local_path": ""}, {"local_path": "."}, {"local_path": str(corpus)}):
+                with self.subTest(paths=paths):
+                    md.write_text(body, encoding="utf-8")
+                    row = {"source_type": "pdf", "markdown_path": str(md), **paths}
+
+                    result = postprocess.postprocess_markdown_row(corpus, row)
+
+                    self.assertEqual(result["reflowed"], 1)
+                    self.assertIn("Advanced", md.read_text(encoding="utf-8"))
+
+    def test_corpus_processing_continues_after_a_failed_download(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = Path(tmp)
+            md = corpus / "paper.md"
+            md.write_text("## Introduction\n\nReadable report text. " * 20, encoding="utf-8")
+            rows = [
+                {"source_type": "pdf", "fetch_status": "failed"},
+                {"source_type": "pdf", "markdown_path": str(md)},
+            ]
+            postprocess.write_jsonl(corpus / "ingested_sources.jsonl", rows)
+
+            summary = postprocess.postprocess_markdown_readability(corpus)
+
+            self.assertEqual(summary["scanned"], 1)
+            self.assertEqual(summary["pdf_scanned"], 1)
+            self.assertEqual(summary["unchanged"], 1)
+            self.assertEqual(summary["failed"], 0)
+            self.assertEqual(postprocess.read_jsonl(corpus / "ingested_sources.jsonl"), rows)
+
     def test_detects_fragmented_pdf_markdown(self) -> None:
         body = "\n".join(["U", "A", "M", "Vis", "io", "n", "C", "o", "n", "c", "e", "p", "t"] * 20)
         metrics = postprocess.readability_metrics(body)
