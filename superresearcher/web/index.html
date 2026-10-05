@@ -22,6 +22,7 @@
             <button type="button" id="publishTabButton">Compile</button>
             <button type="button" id="pulbishTabButton">Publish</button>
           </nav>
+          <button type="button" id="agentButton" class="agent-chip" aria-haspopup="dialog">Agent</button>
           <div class="theme-toggle" aria-label="Theme">
             <button type="button" id="lightThemeButton" class="active" aria-label="Light theme" title="Light theme">
               <span aria-hidden="true">☀</span>
@@ -123,6 +124,8 @@
             <div><span>Planning levels</span><strong id="estimateBreadth">5</strong></div>
             <div><span>Final target</span><strong id="estimateSources">120</strong></div>
           </div>
+
+          <button type="button" id="agentWarning" class="agent-warning" hidden></button>
 
           <div class="actions">
             <button type="submit" class="primary">Start research run</button>
@@ -495,6 +498,24 @@
         <div class="modal-actions">
           <button type="button" id="cancelLargeRun">Cancel</button>
           <button type="button" class="primary" id="continueLargeRun">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="agentModal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="agentModalTitle">
+        <h2 id="agentModalTitle">Agent</h2>
+        <p>Choose which AI plans research, maps topics, and writes report sections.</p>
+        <div class="segmented agent-picker" id="agentPicker">
+          <button type="button" data-agent="codex">Codex · ChatGPT plan</button>
+          <button type="button" data-agent="gemini">Gemini · API key</button>
+        </div>
+        <p id="agentMessage" class="agent-message"></p>
+        <p id="agentSignInHint" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="agentSignIn" hidden>Sign in with ChatGPT</button>
+          <button type="button" id="agentRecheck">Re-check</button>
+          <button type="button" class="primary" id="agentClose">Done</button>
         </div>
       </div>
     </div>

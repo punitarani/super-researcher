@@ -1455,6 +1455,69 @@ select:focus {
   margin-top: 20px;
 }
 
+.agent-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.agent-chip::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.agent-chip.needs-setup::before {
+  background: var(--amber);
+}
+
+.agent-chip:hover {
+  background: var(--control-hover);
+}
+
+.agent-picker {
+  margin-top: 16px;
+}
+
+.modal p.agent-message,
+.agent-warning {
+  border: 1px solid var(--dependency-line);
+  border-radius: 7px;
+  background: var(--dependency-bg);
+  color: var(--dependency-ink);
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+
+.modal p.agent-message.ready {
+  border-color: var(--completed-line);
+  background: var(--completed-bg);
+  color: var(--completed-ink);
+}
+
+.agent-warning {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-message code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 @media (max-width: 1040px) {
   .layout,
   .control-grid,

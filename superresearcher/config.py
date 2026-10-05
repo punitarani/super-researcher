@@ -16,9 +16,15 @@ DEFAULT_STORAGE_ROOT = (
 )
 del _storage_env
 
+ENV_FILE = ROOT / ".env"
 _keys_env = os.environ.get("SUPERRESEARCHER_API_KEYS")
-API_KEYS_FILE = Path(_keys_env).expanduser() if _keys_env else ROOT / "api_keys.txt"
+# SUPERRESEARCHER_API_KEYS names one keys file to use instead (the e2e tests point it at an empty one).
+API_KEYS_FILE = Path(_keys_env).expanduser() if _keys_env else ENV_FILE
+# Keys file from before .env; still read so older setups keep working, with .env winning.
+LEGACY_KEYS_FILE: Path | None = None if _keys_env else ROOT / "api_keys.txt"
 del _keys_env
+
+APP_SETTINGS_FILE = DEFAULT_STORAGE_ROOT / "app-settings.json"
 
 _LEGACY_CODEX_BIN = Path("/Applications/Codex.app/Contents/Resources/codex")
 
@@ -78,7 +84,16 @@ def ensure_storage_root(path: str | Path = DEFAULT_STORAGE_ROOT) -> Path:
     return root
 
 
-def load_api_keys(path: Path = API_KEYS_FILE) -> dict[str, str]:
+def load_api_keys(path: Path | None = None) -> dict[str, str]:
+    """API keys and settings from .env (or `path`). Values are never put into os.environ."""
+    if path is not None:
+        return read_keys_file(path)
+    legacy = read_keys_file(LEGACY_KEYS_FILE) if LEGACY_KEYS_FILE else {}
+    return {**legacy, **read_keys_file(API_KEYS_FILE)}
+
+
+def read_keys_file(path: Path) -> dict[str, str]:
+    """Parse KEY=value lines: comments, `export`, quotes and trailing ` # comments` as in .env files."""
     keys: dict[str, str] = {}
     if not path.exists():
         return keys
@@ -86,14 +101,19 @@ def load_api_keys(path: Path = API_KEYS_FILE) -> dict[str, str]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
         if "=" in line:
             key, value = line.split("=", 1)
-        elif ":" in line:
+        elif ":" in line:  # api_keys.txt also allowed KEY: value
             key, value = line.split(":", 1)
         else:
             continue
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        else:
+            value = value.split(" #", 1)[0].strip()
         if key and value:
             keys[key] = value
     return keys
@@ -101,6 +121,19 @@ def load_api_keys(path: Path = API_KEYS_FILE) -> dict[str, str]:
 
 def redact_keys(keys: dict[str, str]) -> dict[str, str]:
     return {k: "<configured>" for k, v in keys.items() if v}
+
+
+def load_app_settings() -> dict[str, Any]:
+    try:
+        settings = json.loads(APP_SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def save_app_settings(settings: dict[str, Any]) -> None:
+    APP_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(APP_SETTINGS_FILE, settings)
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:

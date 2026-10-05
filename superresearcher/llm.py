@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import tempfile
+import os
 import urllib.error
+import urllib.parse
 import urllib.request
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from .config import codex_bin
+from . import codex
+from .config import codex_bin, load_api_keys, load_app_settings
 
 
 class LLMError(RuntimeError):
-    pass
+    def __init__(self, message: str, fatal: bool = False) -> None:
+        super().__init__(message)
+        self.fatal = fatal  # every later prompt would fail the same way (bad key, unknown model)
+
+
+# Google's alias for its current Flash model, so the default doesn't go stale (gemini-2.0-flash was shut down).
+GEMINI_DEFAULT_MODEL = "gemini-flash-latest"
 
 
 def extract_json(text: str) -> Any:
@@ -44,153 +50,127 @@ def extract_json(text: str) -> Any:
     return json.loads(text[start : end + 1])
 
 
+AGENTS = {"codex": "Codex", "gemini": "Gemini"}
+
+
+def agent_override() -> str | None:
+    """The agent forced by SUPERRESEARCHER_AGENT, which takes precedence over the saved choice."""
+    agent = os.environ.get("SUPERRESEARCHER_AGENT")
+    return agent if agent in AGENTS else None
+
+
+def selected_agent(keys: dict[str, str]) -> str:
+    agent = agent_override() or load_app_settings().get("agent")
+    if agent in AGENTS:
+        return agent
+    return "gemini" if codex_bin() is None and gemini_key(keys) else "codex"
+
+
+def agent_status(agent: str, keys: dict[str, str], refresh: bool = False) -> dict[str, Any]:
+    if agent == "codex":
+        current = codex.status(refresh)
+        state, message = current.state, current.message
+    elif gemini_key(keys):
+        state, message = "ready", "Using your Gemini API key from .env. Usage is billed to that key."
+    else:
+        state, message = "missing_key", "Add GEMINI_API_KEY to .env (see .env.example), then click Re-check."
+    return {"id": agent, "label": AGENTS[agent], "state": state, "ready": state == "ready", "message": message}
+
+
+def agents_payload(refresh: bool = False) -> dict[str, Any]:
+    keys = load_api_keys()
+    return {"selected": selected_agent(keys), "agents": [agent_status(agent, keys, refresh) for agent in AGENTS]}
+
+
+def require_ready_agent() -> None:
+    """Fail fast, with setup steps, when the selected agent can't take prompts."""
+    keys = load_api_keys()
+    status = agent_status(selected_agent(keys), keys)
+    if not status["ready"]:
+        raise LLMError(status["message"])
+
+
 class LLMClient:
-    def __init__(self, keys: dict[str, str], model: str = "gpt-5") -> None:
+    """Sends prompts to one agent. Never falls back to another provider."""
+
+    def __init__(self, keys: dict[str, str], agent: str | None = None) -> None:
         self.keys = keys
-        self.model = model
+        self.agent = agent or selected_agent(keys)
+        # Set after a failure every later call would repeat (signed out, usage limit), so jobs fail fast.
+        self.unavailable: str | None = None
+        # Told why, whenever a JSON prompt fails and the caller's built-in default is used instead.
+        self.on_fallback: Callable[[str], None] | None = None
 
     def json_call(self, prompt: str, fallback: Any) -> Any:
-        for call in (self._codex_call, self._gemini_call):
-            try:
-                raw = call(prompt)
-                return extract_json(raw)
-            except Exception:
-                continue
-        return fallback
+        try:
+            return extract_json(self._complete(prompt, json_mode=True))
+        except Exception as exc:
+            if self.on_fallback:
+                self.on_fallback(str(exc))
+            return fallback
 
     def text_call(self, prompt: str) -> str:
-        errors = []
-        for call in (self._codex_default_call, self._gemini_text_call):
+        return strip_markdown_fence(self._complete(prompt, json_mode=False))
+
+    def _complete(self, prompt: str, json_mode: bool) -> str:
+        if self.unavailable:
+            raise LLMError(self.unavailable)
+        if self.agent == "gemini":
             try:
-                text = call(prompt).strip()
-                return strip_markdown_fence(text)
-            except Exception as exc:
-                errors.append(str(exc))
-        raise LLMError("LLM text call failed: " + " | ".join(error for error in errors if error))
-
-    def _codex_call(self, prompt: str) -> str:
-        return self._run_codex(prompt, use_default_model=False)
-
-    def _codex_default_call(self, prompt: str) -> str:
-        return self._run_codex(prompt, use_default_model=True)
-
-    def _run_codex(self, prompt: str, use_default_model: bool = False) -> str:
-        binary = codex_bin()
-        if binary is None:
-            raise LLMError("Codex binary not found")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out = Path(tmpdir) / "last_message.txt"
-            cmd = [
-                str(binary),
-                "exec",
-                "--skip-git-repo-check",
-                "--sandbox",
-                "read-only",
-                "-c",
-                'model_reasoning_effort="high"',
-                "-o",
-                str(out),
-                "-",
-            ]
-            if self.model and not use_default_model:
-                cmd[5:5] = ["-m", self.model]
-            try:
-                result = subprocess.run(
-                    cmd,
-                    input=prompt,
-                    text=True,
-                    capture_output=True,
-                    timeout=180,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise LLMError("Codex call timed out") from exc
-            if result.returncode != 0:
-                # Some Codex builds may reject config keys; retry with the safest surface.
-                cmd = [
-                    str(binary),
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--sandbox",
-                    "read-only",
-                    "-o",
-                    str(out),
-                    "-",
-                ]
-                if self.model and not use_default_model:
-                    cmd[5:5] = ["-m", self.model]
-                result = subprocess.run(
-                    cmd,
-                    input=prompt,
-                    text=True,
-                    capture_output=True,
-                    timeout=180,
-                    check=False,
-                )
-            if result.returncode != 0:
-                raise LLMError(result.stderr[-1000:])
-            if out.exists():
-                return out.read_text(encoding="utf-8")
-            return result.stdout
-
-    def _gemini_call(self, prompt: str) -> str:
-        key = self.keys.get("GEMINI_API_KEY") or self.keys.get("GOOGLE_API_KEY")
-        if not key:
-            raise LLMError("Gemini key not configured")
-        model = self.keys.get("GEMINI_MODEL", "gemini-2.0-flash")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "responseMimeType": "application/json",
-            },
-        }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+                return gemini_call(self.keys, prompt, json_mode)
+            except LLMError as exc:
+                if exc.fatal:
+                    self.unavailable = str(exc)
+                raise
         try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        except urllib.error.URLError as exc:
+            return codex.complete(prompt, model=self.keys.get("CODEX_MODEL"))
+        except codex.CodexError as exc:
+            if exc.fatal:
+                self.unavailable = str(exc)
             raise LLMError(str(exc)) from exc
-        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        text = "".join(part.get("text", "") for part in parts)
-        if not text:
-            raise LLMError("empty Gemini response")
-        return text
 
-    def _gemini_text_call(self, prompt: str) -> str:
-        key = self.keys.get("GEMINI_API_KEY") or self.keys.get("GOOGLE_API_KEY")
-        if not key:
-            raise LLMError("Gemini key not configured")
-        model = self.keys.get("GEMINI_MODEL", "gemini-2.0-flash")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.2,
-            },
-        }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        except urllib.error.URLError as exc:
-            raise LLMError(str(exc)) from exc
-        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        text = "".join(part.get("text", "") for part in parts)
-        if not text:
-            raise LLMError("empty Gemini response")
-        return text
+
+def gemini_key(keys: dict[str, str]) -> str | None:
+    return keys.get("GEMINI_API_KEY") or keys.get("GOOGLE_API_KEY")
+
+
+def gemini_call(keys: dict[str, str], prompt: str, json_mode: bool) -> str:
+    key = gemini_key(keys)
+    if not key:
+        raise LLMError("Gemini key not configured")
+    model = keys.get("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(model, safe='')}:generateContent"
+    generation_config = {"temperature": 0.7, "responseMimeType": "application/json"} if json_mode else {"temperature": 0.2}
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": generation_config}
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        # The key goes in a header, not the URL, so it can't end up in logs or error messages.
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        detail = gemini_error_detail(exc)
+        # A bad key or model fails every prompt the same way; other errors (e.g. one oversized prompt) may not.
+        fatal = exc.code in (401, 403, 404) or "api key" in detail.lower()
+        raise LLMError(f"Gemini rejected the request (HTTP {exc.code}): {detail}", fatal=fatal) from exc
+    except urllib.error.URLError as exc:
+        raise LLMError(f"Couldn't reach Gemini: {exc.reason}") from exc
+    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts)
+    if not text:
+        raise LLMError("empty Gemini response")
+    return text
+
+
+def gemini_error_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        return str(json.loads(exc.read().decode("utf-8", errors="replace"))["error"]["message"])
+    except Exception:
+        return str(exc.reason)
 
 
 def strip_markdown_fence(text: str) -> str:

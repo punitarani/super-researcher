@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from . import atlas, query_bundles
 from .config import atomic_write_json, atomic_write_text, load_api_keys, slugify
-from .llm import LLMClient
+from .llm import LLMClient, require_ready_agent
 
 
 PUBLISH_VERSION = "publish-markdown-v1"
@@ -174,7 +174,7 @@ def create_publish_plan(corpus: str = "latest", custom_prompts: dict[str, str] |
     sections = finalized.get("subtopics", [])
     if not sections:
         raise RuntimeError("No finalized Compose sections found. Finalize Compose first.")
-    llm = llm or LLMClient(load_api_keys(), model="gpt-5.5")
+    llm = llm or LLMClient(load_api_keys())
     fallback = fallback_toc_plan(corpus_path, sections)
     generated = llm.json_call(toc_prompt(corpus_path, sections), fallback)
     plan_sections = validate_toc_sections(generated, sections)
@@ -249,7 +249,7 @@ class PublishCompileJob:
             with self._lock:
                 self.status["state"] = "running"
                 self.status["started_at"] = datetime.now().isoformat(timespec="seconds")
-            llm = LLMClient(load_api_keys(), model="gpt-5.5")
+            llm = LLMClient(load_api_keys())
             result = compile_publish_paper(
                 str(self.corpus),
                 custom_prompts=self.custom_prompts,
@@ -279,6 +279,7 @@ def start_publish_compile_job(corpus_id_or_path: str, custom_prompts: dict[str, 
         snap = job.snapshot()
         if snap["corpus_path"] == str(corpus) and snap["state"] in {"queued", "running"}:
             return job
+    require_ready_agent()
     job = PublishCompileJob(corpus, custom_prompts=custom_prompts, force_plan=force_plan)
     job.start()
     return job
@@ -296,7 +297,7 @@ def compile_publish_paper(
     progress=None,
 ) -> dict[str, Any]:
     corpus_path = query_bundles.resolve_topic_corpus(corpus)
-    llm = llm or LLMClient(load_api_keys(), model="gpt-5.5")
+    llm = llm or LLMClient(load_api_keys())
     custom_prompts = normalize_custom_prompts(custom_prompts or {})
     if progress:
         progress("Preparing publish plan", 5)
@@ -367,7 +368,7 @@ def compile_publish_paper(
     atomic_write_json(publish_source_index_path(corpus_path), source_index)
     write_final_paper(corpus_path, plan, state, source_index)
     if progress:
-        progress("Paper compiled", 96, completed_sections=len(state.get("completed_sections", [])), section_count=total)
+        progress("Paper compiled", 96, completed_sections=len(state.get("completed_sections", [])), section_count=total, current_section=None)
     return get_publish_payload(str(corpus_path))
 
 

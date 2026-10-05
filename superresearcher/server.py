@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import urllib.parse
@@ -8,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, redact_keys
+from .config import DEFAULT_STORAGE_ROOT, DEPTH_RESULTS, FINAL_SOURCE_DEFAULT, FINAL_SOURCE_MAX, load_api_keys, load_app_settings, redact_keys, save_app_settings
 from .runner import RUNS, ResearchRun
-from . import atlas, postprocess, publish, query_bundles, reporting, topic_discovery
+from . import atlas, codex, llm, postprocess, publish, query_bundles, reporting, topic_discovery
 
 
 def _web_dir() -> Path:
@@ -20,6 +21,13 @@ def _web_dir() -> Path:
 
 
 WEB = _web_dir()
+
+
+def web_file(root: Path, relative: str) -> Path | None:
+    # Resolve first so "..", symlinks and absolute paths can't reach outside root.
+    base = root.resolve()
+    path = (base / relative).resolve()
+    return path if base in path.parents else None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -35,7 +43,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if path.startswith("/static/"):
-            return self.serve_file(WEB / path.removeprefix("/static/"))
+            return self.serve_file(web_file(WEB, path.removeprefix("/static/")))
+        if path.startswith("/assets/"):
+            # embedding-atlas loads its workers from /assets/<file> at the page origin.
+            return self.serve_file(web_file(WEB / "atlas" / "assets", path.removeprefix("/assets/")))
         if path == "/api/config":
             keys = load_api_keys()
             return self.send_json(
@@ -47,6 +58,9 @@ class Handler(BaseHTTPRequestHandler):
                     "configured_api_keys": redact_keys(keys),
                 }
             )
+        if path == "/api/agents":
+            refresh = urllib.parse.parse_qs(parsed.query).get("refresh") == ["1"]
+            return self.send_json(llm.agents_payload(refresh=refresh))
         if path == "/api/runs":
             return self.send_json([run.snapshot() for run in RUNS.values()])
         if path.startswith("/api/runs/"):
@@ -126,7 +140,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"error": "Not found"}, status=404)
 
     def do_POST(self) -> None:
+        if not self.is_local_json_request():
+            return self.refuse_remote_change()
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/agents/codex/login":
+            try:
+                return self.send_json({"url": codex.start_login()}, status=202)
+            except codex.CodexError as exc:
+                return self.send_json({"error": str(exc)}, status=400)
         if parsed.path == "/api/atlas/build":
             try:
                 payload = self.read_json()
@@ -174,6 +195,7 @@ class Handler(BaseHTTPRequestHandler):
                 corpus_id = payload.get("corpus_path") or payload.get("corpus_id")
                 if not corpus_id:
                     return self.send_json({"error": "corpus_path or corpus_id is required"}, status=400)
+                llm.require_ready_agent()  # the plan is the agent's job; don't save the built-in fallback in its place
                 result = publish.create_publish_plan(str(corpus_id), custom_prompts=payload.get("custom_prompts") or None)
                 return self.send_json(result, status=201)
             except Exception as exc:
@@ -244,7 +266,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": str(exc)}, status=400)
 
     def do_PUT(self) -> None:
+        if not self.is_local_json_request():
+            return self.refuse_remote_change()
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/agents":
+            try:
+                agent = self.read_json().get("selected")
+            except (ValueError, AttributeError):
+                agent = None
+            if not isinstance(agent, str) or agent not in llm.AGENTS:
+                return self.send_json({"error": f"Unknown agent: {agent}"}, status=400)
+            override = llm.agent_override()
+            if override and override != agent:
+                return self.send_json({"error": f"SUPERRESEARCHER_AGENT={override} is set, so the app always uses {llm.AGENTS[override]}. Unset it and restart the app to choose here."}, status=409)
+            try:
+                save_app_settings({**load_app_settings(), "agent": agent})
+            except OSError as exc:
+                return self.send_json({"error": f"Couldn't save the agent choice: {exc}"}, status=500)
+            return self.send_json(llm.agents_payload())
         atlas_route = parse_atlas_route(parsed.path)
         if not atlas_route:
             return self.send_json({"error": "Not found"}, status=404)
@@ -263,13 +302,22 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self.send_json({"error": str(exc)}, status=400)
 
+    def refuse_remote_change(self) -> None:
+        # Starting runs and jobs spends the user's agent quota and writes files, so only this app may do it.
+        return self.send_json({"error": "Changes can only be made from the app on this computer."}, status=403)
+
+    def is_local_json_request(self) -> bool:
+        # Loopback-only, and JSON-only so other websites can't trigger it with a plain form post.
+        is_loopback = ipaddress.ip_address(self.client_address[0]).is_loopback
+        return is_loopback and self.headers.get("Content-Type", "").startswith("application/json")
+
     def read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
         return json.loads(raw or "{}")
 
-    def serve_file(self, path: Path) -> None:
-        if not path.exists() or not path.is_file():
+    def serve_file(self, path: Path | None) -> None:
+        if path is None or not path.is_file():
             self.send_error(404)
             return
         content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"

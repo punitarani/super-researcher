@@ -27,34 +27,49 @@ TRACKING_PARAMS = {
 
 def discover_candidates(search_plan: dict[str, Any], keys: dict[str, str], progress=None, max_batches: int | None = None) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
+    report: dict[str, Any] = {"answered": 0, "errors": {}}
+    reported: set[str] = set()
     batches = search_plan["batches"][: max_batches or len(search_plan["batches"])]
     for idx, batch in enumerate(batches, start=1):
         if progress and (idx == 1 or idx % 10 == 0):
             progress(f"Discovery running: {idx}/{len(batches)} searches checked, {len(candidates)} candidates found.")
-        rows = search_batch(batch, keys)
+        rows = search_batch(batch, keys, report)
         candidates.extend(rows)
+        for provider, message in report["errors"].items():
+            if progress and provider not in reported:
+                progress(message)
+            reported.add(provider)
         time.sleep(0.1)
+    if report["errors"] and not report["answered"]:
+        # Every search failed (bad key, no credits, offline): say why instead of finishing with no sources.
+        raise RuntimeError(" ".join(report["errors"].values()))
     return candidates
 
 
-def search_batch(batch: dict[str, Any], keys: dict[str, str]) -> list[dict[str, Any]]:
+def search_batch(batch: dict[str, Any], keys: dict[str, str], report: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Search with the first configured provider that returns results.
+
+    `report`, when given, counts provider calls that answered and keeps the first error per provider.
+    """
     query = adapt_query(batch)
     limit = int(batch.get("results_per_query", 10))
-    providers = []
-    if keys.get("EXA_API_KEY"):
-        providers.append(search_exa)
-    if keys.get("SERPER_API_KEY"):
-        providers.append(search_serper)
-    if keys.get("SERP_API_KEY"):
-        providers.append(search_serpapi)
+    providers = [
+        (name, key, provider)
+        for name, key, provider in (("Exa", "EXA_API_KEY", search_exa), ("Serper", "SERPER_API_KEY", search_serper), ("SerpAPI", "SERP_API_KEY", search_serpapi))
+        if keys.get(key)
+    ]
     results: list[dict[str, Any]] = []
-    for provider in providers:
+    for name, key, provider in providers:
         try:
             results = provider(query, limit, keys)
-            if results:
-                break
-        except Exception:
+        except Exception as exc:
+            if report is not None:
+                report["errors"].setdefault(name, search_error_message(name, key, exc))
             continue
+        if report is not None:
+            report["answered"] += 1
+        if results:
+            break
     enriched = []
     for result in results[:limit]:
         url = result.get("url") or result.get("link")
@@ -79,6 +94,18 @@ def search_batch(batch: dict[str, Any], keys: dict[str, str]) -> list[dict[str, 
             }
         )
     return enriched
+
+
+def search_error_message(name: str, key: str, exc: Exception) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code in (401, 403):
+            return f"{name} search failed: the API key was rejected (HTTP {exc.code}). Check {key}."
+        if exc.code in (402, 429):
+            return f"{name} search failed: out of credits or rate limited (HTTP {exc.code})."
+        return f"{name} search failed: HTTP {exc.code} {exc.reason}."
+    if isinstance(exc, urllib.error.URLError):
+        return f"{name} search failed: couldn't reach the service ({exc.reason})."
+    return f"{name} search failed: {exc}"
 
 
 def adapt_query(batch: dict[str, Any]) -> str:

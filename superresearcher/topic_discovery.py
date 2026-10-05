@@ -14,10 +14,11 @@ from typing import Any
 
 from . import atlas
 from .config import DEFAULT_STORAGE_ROOT, atomic_write_json, atomic_write_text, load_api_keys
-from .llm import LLMClient
+from .llm import LLMClient, require_ready_agent
 
 
 GENERIC_LABELS = {
+    "extracted text",  # "Extracted PDF Text": ingest's own label for plain PDF text, not a document heading
     "abstract",
     "acknowledgment",
     "acknowledgments",
@@ -150,6 +151,8 @@ def start_topic_discovery_job(corpus_id_or_path: str, force: bool = False) -> To
         snap = job.snapshot()
         if snap["corpus_path"] == str(corpus) and snap["state"] in {"queued", "running"}:
             return job
+    if force or not topic_tree_path(corpus).exists():  # a cached topic tree needs no agent
+        require_ready_agent()
     job = TopicDiscoveryJob(corpus, force=force)
     job.start()
     return job
@@ -516,6 +519,12 @@ def run_topic_discovery(
     if progress:
         progress("Writing mined topic artifacts", 68)
     write_topic_outputs(corpus_path, result)
+    if not deduped:
+        raise RuntimeError(
+            "No section headings or table-of-contents entries were found in this corpus, so there's nothing to build "
+            "topics from. Its PDFs were saved as plain text: run Post-process to rebuild their Markdown with headings "
+            "(it needs the PDF extras from requirements-atlas.txt), then Build Atlas and Discover topics again."
+        )
 
     llm = llm or LLMClient(load_api_keys())
     try:
@@ -528,7 +537,7 @@ def run_topic_discovery(
         result["summary"]["llm_status"] = "failed"
         result["summary"]["llm_error"] = str(exc)
         write_topic_outputs(corpus_path, result)
-        raise RuntimeError(f"Topic synthesis LLM call failed. Mined and deduped artifacts were written to {corpus_path / 'atlas' / 'topics'}.") from exc
+        raise RuntimeError(f"Topic synthesis failed: {exc} Mined and deduped artifacts were written to {corpus_path / 'atlas' / 'topics'}.") from exc
 
     result["summary"]["llm_status"] = "success"
     result["topic_tree_markdown"] = topic_tree

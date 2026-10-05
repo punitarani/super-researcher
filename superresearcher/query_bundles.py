@@ -339,7 +339,7 @@ def build_compose_query_bundles(corpus: str = "latest", force: bool = False, pro
     compose_dir(corpus_path).mkdir(parents=True, exist_ok=True)
     atomic_write_json(compose_query_bundles_path(corpus_path), payload)
     if progress:
-        progress("Saved generated terms", 96, **payload["summary"])
+        progress("Saved generated terms", 96, completed_subtopics=total, current_subtopic=None, **payload["summary"])
     return payload
 
 
